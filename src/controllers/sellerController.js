@@ -411,7 +411,7 @@ exports.getRecentOrders = async (req, res) => {
 
     const formattedOrders = orders.map(order => {
       const sellerItems = order.orderItems.filter(item =>
-        productIds.includes(item.product._id)
+        productIds.some(id => id.toString() === (item.product._id || item.product).toString())
       );
 
       return {
@@ -561,7 +561,7 @@ exports.getSellerOrders = async (req, res) => {
 
     const formattedOrders = orders.map(order => {
       const sellerItems = order.orderItems.filter(item =>
-        productIds.includes(item.product)
+        productIds.some(id => id.toString() === (item.product._id || item.product).toString())
       );
 
       return {
@@ -595,6 +595,131 @@ exports.getSellerOrders = async (req, res) => {
   }
 };
 
+// @desc    Get shipping orders
+// @route   GET /api/seller/orders/shipping
+// @access  Private/Seller
+exports.getShippingOrders = async (req, res) => {
+  try {
+    const products = await Product.find({ seller: req.user.id });
+    const productIds = products.map(p => p._id);
+
+    let query = { 'orderItems.product': { $in: productIds } };
+
+    const orders = await Order.find(query)
+      .sort('-createdAt')
+      .populate('user', 'name email phone');
+
+    const formattedOrders = orders.map(order => {
+      const sellerItems = order.orderItems.filter(item =>
+        productIds.some(id => id.toString() === (item.product._id || item.product).toString())
+      );
+
+      return {
+        _id: order._id,
+        orderId: order._id,
+        customer: order.user,
+        items: sellerItems,
+        totalAmount: sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+        status: order.status,
+        shippingStatus: order.status,
+        paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt,
+        shippingAddress: order.shippingAddress,
+        trackingInfo: {
+          trackingNumber: order.trackingNumber,
+          courierService: order.carrier,
+          estimatedDelivery: order.estimatedDelivery
+        }
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      orders: formattedOrders
+    });
+  } catch (error) {
+    console.error('Get shipping orders error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update shipping status
+// @route   PUT /api/seller/orders/:orderId/shipping
+// @access  Private/Seller
+exports.updateShippingStatus = async (req, res) => {
+  try {
+    const { shippingStatus, trackingInfo } = req.body;
+
+    const order = await Order.findById(req.params.orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const products = await Product.find({ seller: req.user.id });
+    const productIds = products.map(p => p._id);
+    const hasSellerProducts = order.orderItems.some(item =>
+      productIds.some(id => id.toString() === (item.product._id || item.product).toString())
+    );
+
+    if (!hasSellerProducts) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (shippingStatus) {
+        order.status = shippingStatus;
+        
+        // Handle timestamps based on status
+        if (shippingStatus === 'shipped') order.shippedAt = new Date();
+        if (shippingStatus === 'delivered') {
+            order.deliveredAt = new Date();
+            order.isDelivered = true;
+        }
+        if (shippingStatus === 'cancelled') order.cancelledAt = new Date();
+    }
+    
+    if (trackingInfo) {
+        if (trackingInfo.trackingNumber) order.trackingNumber = trackingInfo.trackingNumber;
+        if (trackingInfo.courierService) order.carrier = trackingInfo.courierService;
+        if (trackingInfo.estimatedDelivery) order.estimatedDelivery = trackingInfo.estimatedDelivery;
+    }
+
+    await order.save();
+    
+    await order.populate('user', 'name email phone');
+
+    const sellerItems = order.orderItems.filter(item =>
+      productIds.some(id => id.toString() === (item.product._id || item.product).toString())
+    );
+
+    const formattedOrder = {
+        _id: order._id,
+        orderId: order._id,
+        customer: order.user,
+        items: sellerItems,
+        totalAmount: sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+        status: order.status,
+        shippingStatus: order.status,
+        paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt,
+        shippingAddress: order.shippingAddress,
+        trackingInfo: {
+          trackingNumber: order.trackingNumber,
+          courierService: order.carrier,
+          estimatedDelivery: order.estimatedDelivery
+        }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Shipping status updated successfully',
+      order: formattedOrder
+    });
+  } catch (error) {
+    console.error('Update shipping status error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // @desc    Update order status
 // @route   PUT /api/seller/orders/:orderId/status
 // @access  Private/Seller
@@ -610,8 +735,8 @@ exports.updateOrderStatus = async (req, res) => {
     const products = await Product.find({ seller: req.user.id });
     const productIds = products.map(p => p._id);
     const hasSellerProducts = order.orderItems.some(item =>
-  productIds.includes(item.product.toString())
-);
+      productIds.some(id => id.toString() === (item.product._id || item.product).toString())
+    );
 
     if (!hasSellerProducts) {
       return res.status(403).json({ success: false, message: 'Not authorized' });

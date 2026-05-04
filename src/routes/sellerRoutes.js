@@ -36,6 +36,8 @@ const {
   updateSellerProfile,
   getInventory,
   getSellerOrders,
+  getShippingOrders,
+  updateShippingStatus,
   updateOrderStatus,      // ✅ This is the correct function from sellerController
   getStockLogs,
   getRevenueReport,
@@ -143,10 +145,12 @@ router.get('/stock-logs', getStockLogs);
 
 // ==================== ORDER MANAGEMENT ====================
 router.get('/orders', getSellerOrders);
+router.get('/orders/shipping', getShippingOrders);
+router.put('/orders/:orderId/shipping', updateShippingStatus);
 router.get('/orders/:orderId', getSellerOrders);
 router.put('/orders/:orderId/status', updateOrderStatus);  // ✅ Use the function from sellerController
 router.put('/orders/:orderId/return', processReturn);
-router.post('/orders/:orderId/shipping-label', generateShippingLabel);
+router.get('/orders/:orderId/shipping-label', generateShippingLabel);
 
 // ==================== REPORTS & ANALYTICS ====================
 router.get('/reports/revenue', getRevenueReport);

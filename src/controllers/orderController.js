@@ -476,14 +476,19 @@ exports.createOrder = async (req, res) => {
       orderId,
       user: req.user.id,
       paymentMethod,
-      orderItems: orderItems.map(item => ({
-        product: item.product,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        quantity: item.quantity,
-        seller: item.seller
-      })),
+      orderItems: orderItems.map(item => {
+        const mappedItem = {
+          product: item.product,
+          name: item.name,
+          image: item.image,
+          price: item.price,
+          quantity: item.quantity
+        };
+        if (item.seller && /^[0-9a-fA-F]{24}$/.test(item.seller.toString())) {
+          mappedItem.seller = item.seller;
+        }
+        return mappedItem;
+      }),
       itemsPrice: calculatedItemsPrice,
       taxPrice: calculatedTaxPrice,
       shippingPrice: calculatedShippingPrice,
