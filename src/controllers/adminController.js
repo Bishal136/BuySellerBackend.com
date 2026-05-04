@@ -8,6 +8,7 @@ const Banner = require('../models/Banner');
 const Announcement = require('../models/Announcement');
 const AuditLog = require('../models/AuditLog');
 const Admin = require('../models/Admin');
+const Setting = require('../models/Setting');
 
 // ==================== DASHBOARD STATS ====================
 
@@ -179,7 +180,6 @@ exports.getSellers = async (req, res) => {
     }
     
     const sellers = await Seller.find(query)
-      .populate('user', 'name email phone')
       .sort('-createdAt')
       .limit(limit)
       .skip(startIndex);
@@ -198,6 +198,98 @@ exports.getSellers = async (req, res) => {
     });
   } catch (error) {
     console.error('Get sellers error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create new seller
+// @route   POST /api/admin/sellers
+// @access  Private/Admin
+exports.createSeller = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      storeName,
+      businessName,
+      businessEmail,
+      businessPhone,
+      businessAddress,
+      taxId
+    } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !phone || !storeName || !businessName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: name, email, phone, storeName, businessName are required'
+      });
+    }
+
+    // Check if seller already exists by email
+    const existingSeller = await Seller.findOne({ email });
+    if (existingSeller) {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller already registered with this email'
+      });
+    }
+
+    // Check if store name is taken
+    const storeExists = await Seller.findOne({ storeName });
+    if (storeExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Store name already taken'
+      });
+    }
+
+    // Create seller profile
+    const seller = await Seller.create({
+      name,
+      email,
+      phone,
+      storeName,
+      storeSlug: storeName.toLowerCase().replace(/[^a-zA-Z0-9]/g, '-'),
+      businessName,
+      businessEmail: businessEmail || email,
+      businessPhone: businessPhone || phone,
+      businessAddress: businessAddress || {
+        street: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: 'Bangladesh'
+      },
+      taxId: taxId || '',
+      verificationStatus: 'verified', // Directly verified since admin creates it
+      verifiedAt: new Date(),
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    // Upgrade User to seller if exists
+    await User.findOneAndUpdate({ email: seller.email }, { role: 'seller' });
+
+    // Log action
+    await AuditLog.create({
+      user: req.user.id,
+      userRole: 'admin',
+      action: 'Created new seller',
+      entity: 'Seller',
+      entityId: seller._id,
+      details: { storeName: seller.storeName, email: seller.email }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Seller created successfully',
+      seller
+    });
+  } catch (error) {
+    console.error('Create seller error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -223,7 +315,7 @@ exports.verifySeller = async (req, res) => {
     
     // Update user role if verified
     if (status === 'verified') {
-      await User.findByIdAndUpdate(seller.user, { role: 'seller' });
+      await User.findOneAndUpdate({ email: seller.email }, { role: 'seller' });
     }
     
     // Log action
@@ -296,6 +388,62 @@ exports.updateCommissionSettings = async (req, res) => {
     });
   } catch (error) {
     console.error('Update commission error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==================== PLATFORM SETTINGS ====================
+
+// @desc    Get platform settings
+// @route   GET /api/admin/settings
+// @access  Private/Admin
+exports.getSettings = async (req, res) => {
+  try {
+    let settings = await Setting.findOne();
+    
+    if (!settings) {
+      settings = await Setting.create({});
+    }
+    
+    res.status(200).json({
+      success: true,
+      settings
+    });
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update platform settings
+// @route   PUT /api/admin/settings
+// @access  Private/Admin
+exports.updateSettings = async (req, res) => {
+  try {
+    let settings = await Setting.findOne();
+    
+    if (!settings) {
+      settings = await Setting.create(req.body);
+    } else {
+      settings = await Setting.findOneAndUpdate({}, req.body, { new: true, runValidators: true });
+    }
+    
+    // Log action
+    await AuditLog.create({
+      user: req.user.id,
+      userRole: 'admin',
+      action: 'Updated platform settings',
+      entity: 'Setting',
+      details: { updatedKeys: Object.keys(req.body) }
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Settings updated successfully',
+      settings
+    });
+  } catch (error) {
+    console.error('Update settings error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -413,6 +561,37 @@ exports.getBanners = async (req, res) => {
   } catch (error) {
     console.error('Get banners error:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Upload banner image
+// @route   POST /api/admin/banners/upload
+// @access  Private/Admin
+exports.uploadBannerImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload an image file'
+      });
+    }
+
+    // Convert buffer to base64
+    const base64Image = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+    const imageUrl = `data:${mimeType};base64,${base64Image}`;
+    
+    res.status(200).json({
+      success: true,
+      url: imageUrl,
+      message: 'Banner image uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Upload banner image error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 

@@ -23,6 +23,7 @@ const paymentRoutes = require('./src/routes/paymentRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 // const reviewRoutes = require('./src/routes/reviewRoutes');
 const categoryRoutes = require('./src/routes/categoryRoutes');
+const bannerRoutes = require('./src/routes/bannerRoutes');
 
 // Connect to database
 connectDB();
@@ -67,6 +68,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/seller', sellerRoutes);
 
 app.use('/api/categories', categoryRoutes);
+app.use('/api/banners', bannerRoutes);
 
 
 // Health check endpoint

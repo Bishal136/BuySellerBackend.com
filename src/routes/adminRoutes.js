@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { protect, authorize } = require('../middleware/authMiddleware');
+
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 const {
   // Dashboard
   getDashboardStats,
@@ -11,11 +18,16 @@ const {
   
   // Seller Management
   getSellers,
+  createSeller,
   verifySeller,
   
   // Commission
   getCommissionSettings,
   updateCommissionSettings,
+  
+  // Settings
+  getSettings,
+  updateSettings,
   
   // Coupons
   getCoupons,
@@ -28,6 +40,7 @@ const {
   createBanner,
   updateBanner,
   deleteBanner,
+  uploadBannerImage,
   
   // Announcements
   getAnnouncements,
@@ -52,11 +65,16 @@ router.put('/users/:userId/status', updateUserStatus);
 
 // Seller Management
 router.get('/sellers', getSellers);
+router.post('/sellers', createSeller);
 router.put('/sellers/:sellerId/verify', verifySeller);
 
 // Commission Settings
 router.get('/commission', getCommissionSettings);
 router.put('/commission', updateCommissionSettings);
+
+// Platform Settings
+router.get('/settings', getSettings);
+router.put('/settings', updateSettings);
 
 // Coupon Management
 router.get('/coupons', getCoupons);
@@ -66,6 +84,7 @@ router.delete('/coupons/:id', deleteCoupon);
 
 // Banner Management
 router.get('/banners', getBanners);
+router.post('/banners/upload', upload.single('image'), uploadBannerImage);
 router.post('/banners', createBanner);
 router.put('/banners/:id', updateBanner);
 router.delete('/banners/:id', deleteBanner);
