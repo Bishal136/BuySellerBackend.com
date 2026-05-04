@@ -21,10 +21,11 @@ const {
   deleteProductImage,
   setPrimaryImage,
   getProductStats,
-  bulkDeleteProducts
+  bulkDeleteProducts,
+  bulkUpdateStock,
 } = require('../controllers/productManagementController');
 
-// Import from sellerController (complete version)
+// Import from sellerController (this has the correct updateOrderStatus)
 const {
   registerSeller,
   getDashboardStats,
@@ -35,8 +36,7 @@ const {
   updateSellerProfile,
   getInventory,
   getSellerOrders,
-  updateOrderStatus,
-  bulkUpdateStock,
+  updateOrderStatus,      // ✅ This is the correct function from sellerController
   getStockLogs,
   getRevenueReport,
   exportReport,
@@ -48,6 +48,12 @@ const {
   generateShippingLabel,
   processReturn
 } = require('../controllers/sellerController');
+
+console.log('✓ Seller controller functions loaded:', {
+  getDashboardStats: typeof getDashboardStats,
+  registerSeller: typeof registerSeller,
+  updateOrderStatus: typeof updateOrderStatus
+});
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -75,9 +81,24 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
+// Debug middleware to log all requests
+router.use((req, res, next) => {
+  console.log(`[Seller Route] ${req.method} ${req.url}`);
+  next();
+});
+
 // All seller routes require authentication and seller/admin role
 router.use(protect);
 router.use(authorize('seller', 'admin'));
+
+// Test route
+router.get('/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Seller routes working',
+    user: { id: req.user.id, role: req.user.role }
+  });
+});
 
 // ==================== REGISTRATION ====================
 router.post('/register', registerSeller);
@@ -123,7 +144,7 @@ router.get('/stock-logs', getStockLogs);
 // ==================== ORDER MANAGEMENT ====================
 router.get('/orders', getSellerOrders);
 router.get('/orders/:orderId', getSellerOrders);
-router.put('/orders/:orderId/status', updateOrderStatus);
+router.put('/orders/:orderId/status', updateOrderStatus);  // ✅ Use the function from sellerController
 router.put('/orders/:orderId/return', processReturn);
 router.post('/orders/:orderId/shipping-label', generateShippingLabel);
 

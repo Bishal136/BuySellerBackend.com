@@ -13,10 +13,13 @@ const ExcelJS = require('exceljs');
 
 // @desc    Register as seller
 // @route   POST /api/seller/register
-// @access  Private
+// @access  Public (or Private - depends on your flow)
 exports.registerSeller = async (req, res) => {
   try {
     const {
+      name,
+      email,
+      phone,
       storeName,
       businessName,
       businessEmail,
@@ -25,12 +28,31 @@ exports.registerSeller = async (req, res) => {
       taxId
     } = req.body;
 
-    // Check if user is already a seller
-    const existingSeller = await Seller.findOne({ user: req.user.id });
+    console.log('Register seller request:', { name, email, storeName });
+
+    // Validate required fields
+    if (!name || !email || !phone || !storeName || !businessName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: name, email, phone, storeName, businessName are required'
+      });
+    }
+
+    // Check if seller already exists by email
+    const existingSeller = await Seller.findOne({ email });
     if (existingSeller) {
       return res.status(400).json({
         success: false,
-        message: 'You are already registered as a seller'
+        message: 'Seller already registered with this email'
+      });
+    }
+
+    // Check if seller exists by business email
+    const existingBusinessEmail = await Seller.findOne({ businessEmail });
+    if (existingBusinessEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller already registered with this business email'
       });
     }
 
@@ -43,26 +65,46 @@ exports.registerSeller = async (req, res) => {
       });
     }
 
-    // Create seller profile
+    // Create seller profile (standalone, no User reference needed)
     const seller = await Seller.create({
-      user: req.user.id,
+      name,
+      email,
+      phone,
       storeName,
       storeSlug: storeName.toLowerCase().replace(/[^a-zA-Z0-9]/g, '-'),
       businessName,
-      businessEmail,
-      businessPhone,
-      businessAddress,
-      taxId,
-      verificationStatus: 'pending'
+      businessEmail: businessEmail || email,
+      businessPhone: businessPhone || phone,
+      businessAddress: businessAddress || {
+        street: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: 'Bangladesh'
+      },
+      taxId: taxId || '',
+      verificationStatus: 'pending',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
 
-    // Update user role
-    await User.findByIdAndUpdate(req.user.id, { role: 'seller' });
+    console.log('Seller created successfully:', seller._id);
 
     res.status(201).json({
       success: true,
       message: 'Seller registration submitted for verification',
-      seller
+      seller: {
+        id: seller._id,
+        name: seller.name,
+        email: seller.email,
+        phone: seller.phone,
+        storeName: seller.storeName,
+        storeSlug: seller.storeSlug,
+        businessName: seller.businessName,
+        verificationStatus: seller.verificationStatus,
+        isActive: seller.isActive
+      }
     });
   } catch (error) {
     console.error('Register seller error:', error);
@@ -78,8 +120,7 @@ exports.registerSeller = async (req, res) => {
 // @access  Private/Seller
 exports.getSellerProfile = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ user: req.user.id })
-      .populate('user', 'name email phone');
+    const seller = await Seller.findById(req.user.id);
 
     if (!seller) {
       return res.status(404).json({
@@ -106,9 +147,9 @@ exports.getSellerProfile = async (req, res) => {
 // @access  Private/Seller
 exports.updateSellerProfile = async (req, res) => {
   try {
-    const { storeName, storeDescription, storeLogo, storeBanner } = req.body;
+    const { storeName, storeDescription, storeLogo, storeBanner, phone, businessAddress } = req.body;
 
-    const seller = await Seller.findOne({ user: req.user.id });
+    const seller = await Seller.findById(req.user.id);
     if (!seller) {
       return res.status(404).json({
         success: false,
@@ -123,6 +164,8 @@ exports.updateSellerProfile = async (req, res) => {
     if (storeDescription) seller.storeDescription = storeDescription;
     if (storeLogo) seller.storeLogo = storeLogo;
     if (storeBanner) seller.storeBanner = storeBanner;
+    if (phone) seller.phone = phone;
+    if (businessAddress) seller.businessAddress = businessAddress;
 
     await seller.save();
 
@@ -147,74 +190,68 @@ exports.updateSellerProfile = async (req, res) => {
 // @access  Private/Seller
 exports.getDashboardStats = async (req, res) => {
   try {
-    const seller = await Seller.findOne({ user: req.user.id });
+    console.log('getDashboardStats called');
+    console.log('Seller ID from token:', req.user.id);
+
+    // Get seller directly from Seller collection using the ID from token
+    const seller = await Seller.findById(req.user.id);
+
     if (!seller) {
+      console.log('Seller not found for ID:', req.user.id);
       return res.status(404).json({
         success: false,
-        message: 'Seller profile not found'
+        message: 'Seller profile not found. Please complete your registration.'
       });
     }
 
-    // Get seller's products
-    const products = await Product.find({ seller: req.user.id });
+    console.log('Seller found:', seller.storeName);
+
+    // Get seller's products - using seller._id
+    const products = await Product.find({ seller: seller._id });
+    console.log('Products count:', products.length);
+
+    // Get product IDs
     const productIds = products.map(p => p._id);
 
     // Get orders for seller's products
     const orders = await Order.find({
       'orderItems.product': { $in: productIds }
     });
+    console.log('Orders count:', orders.length);
 
-    // Calculate today's stats
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayOrders = orders.filter(o => o.createdAt >= today);
-    
-    // Calculate weekly stats
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const weeklyOrders = orders.filter(o => o.createdAt >= weekAgo);
-    
-    // Calculate monthly stats
-    const monthAgo = new Date();
-    monthAgo.setMonth(monthAgo.getMonth() - 1);
-    const monthlyOrders = orders.filter(o => o.createdAt >= monthAgo);
+    // Calculate stats
+    const deliveredOrders = orders.filter(o => o.status === 'delivered');
+    const totalRevenue = deliveredOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    const totalOrders = orders.length;
+    const totalProducts = products.length;
 
     const stats = {
-      totalSales: seller.totalSales || 0,
-      totalRevenue: seller.totalRevenue || 0,
-      totalOrders: seller.totalOrders || 0,
-      totalProducts: products.length,
-      
-      // Order status counts
+      totalRevenue: totalRevenue,
+      totalOrders: totalOrders,
+      totalProducts: totalProducts,
+      totalSales: deliveredOrders.length,
       pendingOrders: orders.filter(o => o.status === 'pending').length,
       processingOrders: orders.filter(o => o.status === 'processing').length,
       shippedOrders: orders.filter(o => o.status === 'shipped').length,
-      deliveredOrders: orders.filter(o => o.status === 'delivered').length,
+      deliveredOrders: deliveredOrders.length,
       cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
-      
-      // Today's stats
-      todaySales: todayOrders.length,
-      todayRevenue: todayOrders.reduce((sum, o) => sum + o.totalPrice, 0),
-      
-      // Weekly stats
-      weeklySales: weeklyOrders.length,
-      weeklyRevenue: weeklyOrders.reduce((sum, o) => sum + o.totalPrice, 0),
-      
-      // Monthly stats
-      monthlySales: monthlyOrders.length,
-      monthlyRevenue: monthlyOrders.reduce((sum, o) => sum + o.totalPrice, 0),
-      
-      // Yearly stats
-      yearlySales: orders.length,
-      yearlyRevenue: orders.reduce((sum, o) => sum + o.totalPrice, 0),
-      
-      // Stock alerts
       lowStockProducts: products.filter(p => p.stock > 0 && p.stock <= 10),
       outOfStockProducts: products.filter(p => p.stock === 0),
-      
-      // Rating
-      rating: seller.rating
+      todaySales: 0,
+      todayRevenue: 0,
+      weeklySales: 0,
+      weeklyRevenue: 0,
+      monthlySales: 0,
+      monthlyRevenue: 0,
+      yearlySales: totalOrders,
+      yearlyRevenue: totalRevenue,
+      rating: seller.rating || { average: 0, count: 0 },
+      storeName: seller.storeName,
+      storeLogo: seller.storeLogo,
+      verificationStatus: seller.verificationStatus
     };
+
+    console.log('Stats calculated successfully');
 
     res.status(200).json({
       success: true,
@@ -235,13 +272,21 @@ exports.getDashboardStats = async (req, res) => {
 exports.getSalesAnalytics = async (req, res) => {
   try {
     const { period = 'weekly' } = req.query;
-    
-    const products = await Product.find({ seller: req.user.id });
+
+    const seller = await Seller.findById(req.user.id);
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found'
+      });
+    }
+
+    const products = await Product.find({ seller: seller._id });
     const productIds = products.map(p => p._id);
 
     let startDate;
     let groupBy;
-    
+
     switch (period) {
       case 'daily':
         startDate = new Date();
@@ -288,7 +333,6 @@ exports.getSalesAnalytics = async (req, res) => {
       { $sort: { '_id': 1 } }
     ]);
 
-    // Get top selling products
     const topProducts = await Order.aggregate([
       {
         $match: {
@@ -321,7 +365,7 @@ exports.getSalesAnalytics = async (req, res) => {
     res.status(200).json({
       success: true,
       analytics: {
-        salesData,
+        salesData: salesData.map(d => ({ _id: d._id, totalSales: d.totalSales, totalRevenue: d.totalRevenue })),
         topProducts: populatedTopProducts.map(p => ({
           product: p._id,
           totalSold: p.totalSold,
@@ -345,8 +389,16 @@ exports.getSalesAnalytics = async (req, res) => {
 exports.getRecentOrders = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    
-    const products = await Product.find({ seller: req.user.id });
+
+    const seller = await Seller.findById(req.user.id);
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found'
+      });
+    }
+
+    const products = await Product.find({ seller: seller._id });
     const productIds = products.map(p => p._id);
 
     const orders = await Order.find({
@@ -358,10 +410,10 @@ exports.getRecentOrders = async (req, res) => {
       .populate('orderItems.product', 'name images');
 
     const formattedOrders = orders.map(order => {
-      const sellerItems = order.orderItems.filter(item => 
+      const sellerItems = order.orderItems.filter(item =>
         productIds.includes(item.product._id)
       );
-      
+
       return {
         _id: order._id,
         orderId: order._id,
@@ -393,9 +445,17 @@ exports.getRecentOrders = async (req, res) => {
 exports.getLowStockProducts = async (req, res) => {
   try {
     const threshold = parseInt(req.query.threshold) || 10;
-    
+
+    const seller = await Seller.findById(req.user.id);
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found'
+      });
+    }
+
     const products = await Product.find({
-      seller: req.user.id,
+      seller: seller._id,
       stock: { $lte: threshold, $gt: 0 }
     })
       .select('name sku stock price images')
@@ -425,37 +485,37 @@ exports.getInventory = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const startIndex = (page - 1) * limit;
-    
+
     let query = { seller: req.user.id };
-    
+
     if (req.query.stockStatus === 'low') {
       query.stock = { $lte: 10, $gt: 0 };
     } else if (req.query.stockStatus === 'out') {
       query.stock = 0;
     }
-    
+
     if (req.query.search) {
       query.name = { $regex: req.query.search, $options: 'i' };
     }
-    
+
     const products = await Product.find(query)
       .select('name sku stock price images status')
       .sort('stock')
       .limit(limit)
       .skip(startIndex);
-    
+
     const total = await Product.countDocuments(query);
-    
+
     const stats = {
       totalProducts: await Product.countDocuments({ seller: req.user.id }),
       lowStock: await Product.countDocuments({ seller: req.user.id, stock: { $lte: 10, $gt: 0 } }),
       outOfStock: await Product.countDocuments({ seller: req.user.id, stock: 0 }),
-      totalValue: await Product.aggregate([
+      totalValue: (await Product.aggregate([
         { $match: { seller: req.user._id } },
         { $group: { _id: null, total: { $sum: { $multiply: ['$price', '$stock'] } } } }
-      ]).then(res => res[0]?.total || 0)
+      ]))[0]?.total || 0
     };
-    
+
     res.status(200).json({
       success: true,
       products,
@@ -483,27 +543,27 @@ exports.getSellerOrders = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const startIndex = (page - 1) * limit;
-    
+
     const products = await Product.find({ seller: req.user.id });
     const productIds = products.map(p => p._id);
-    
+
     let query = { 'orderItems.product': { $in: productIds } };
-    
+
     if (req.query.status && req.query.status !== 'all') {
       query.status = req.query.status;
     }
-    
+
     const orders = await Order.find(query)
       .sort('-createdAt')
       .limit(limit)
       .skip(startIndex)
       .populate('user', 'name email phone');
-    
+
     const formattedOrders = orders.map(order => {
-      const sellerItems = order.orderItems.filter(item => 
+      const sellerItems = order.orderItems.filter(item =>
         productIds.includes(item.product)
       );
-      
+
       return {
         _id: order._id,
         orderId: order._id,
@@ -516,9 +576,9 @@ exports.getSellerOrders = async (req, res) => {
         shippingAddress: order.shippingAddress
       };
     });
-    
+
     const total = await Order.countDocuments(query);
-    
+
     res.status(200).json({
       success: true,
       orders: formattedOrders,
@@ -541,28 +601,28 @@ exports.getSellerOrders = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status, trackingNumber, carrier } = req.body;
-    
+
     const order = await Order.findById(req.params.orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     const products = await Product.find({ seller: req.user.id });
     const productIds = products.map(p => p._id);
-    const hasSellerProducts = order.orderItems.some(item => 
-      productIds.includes(item.product)
-    );
-    
+    const hasSellerProducts = order.orderItems.some(item =>
+  productIds.includes(item.product.toString())
+);
+
     if (!hasSellerProducts) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-    
+
     order.status = status;
     if (trackingNumber) order.trackingNumber = trackingNumber;
     if (carrier) order.carrier = carrier;
-    
+
     await order.save();
-    
+
     await Notification.create({
       user: order.user,
       type: 'order',
@@ -571,7 +631,7 @@ exports.updateOrderStatus = async (req, res) => {
       data: { orderId: order._id },
       link: `/orders/${order._id}`
     });
-    
+
     res.status(200).json({
       success: true,
       message: 'Order status updated successfully',
@@ -592,18 +652,18 @@ exports.bulkUpdateStock = async (req, res) => {
   try {
     const { updates, reason, note } = req.body;
     const results = [];
-    
+
     for (const update of updates) {
       const product = await Product.findOne({
         _id: update.productId,
         seller: req.user.id
       });
-      
+
       if (product) {
         const previousStock = product.stock;
         product.stock = update.newStock;
         await product.save();
-        
+
         await StockLog.create({
           seller: req.user.id,
           product: product._id,
@@ -613,7 +673,7 @@ exports.bulkUpdateStock = async (req, res) => {
           reason: reason || 'manual',
           note
         });
-        
+
         results.push({
           productId: update.productId,
           name: product.name,
@@ -623,7 +683,7 @@ exports.bulkUpdateStock = async (req, res) => {
         });
       }
     }
-    
+
     res.status(200).json({
       success: true,
       message: `${results.filter(r => r.success).length} products updated`,
@@ -644,7 +704,7 @@ exports.getStockLogs = async (req, res) => {
       .populate('product', 'name sku')
       .sort('-createdAt')
       .limit(50);
-    
+
     res.status(200).json({
       success: true,
       logs
@@ -663,18 +723,18 @@ exports.getStockLogs = async (req, res) => {
 exports.getRevenueReport = async (req, res) => {
   try {
     const { startDate, endDate, groupBy = 'day' } = req.query;
-    
+
     const products = await Product.find({ seller: req.user.id });
     const productIds = products.map(p => p._id);
-    
+
     let dateFormat;
-    switch(groupBy) {
+    switch (groupBy) {
       case 'day': dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }; break;
       case 'month': dateFormat = { $dateToString: { format: '%Y-%m', date: '$createdAt' } }; break;
       case 'year': dateFormat = { $dateToString: { format: '%Y', date: '$createdAt' } }; break;
       default: dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
     }
-    
+
     const revenueData = await Order.aggregate([
       {
         $match: {
@@ -692,7 +752,7 @@ exports.getRevenueReport = async (req, res) => {
       },
       { $sort: { '_id': 1 } }
     ]);
-    
+
     res.status(200).json({
       success: true,
       revenueData,
@@ -715,15 +775,15 @@ exports.exportReport = async (req, res) => {
     const { type, startDate, endDate } = req.query;
     const products = await Product.find({ seller: req.user.id });
     const productIds = products.map(p => p._id);
-    
+
     let data = [];
-    
+
     if (type === 'orders') {
       const orders = await Order.find({
         'orderItems.product': { $in: productIds },
         ...(startDate && endDate && { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } })
       }).populate('user', 'name email');
-      
+
       data = orders.map(order => ({
         'Order ID': order._id,
         'Customer Name': order.user?.name,
@@ -742,10 +802,10 @@ exports.exportReport = async (req, res) => {
         'Status': product.status
       }));
     }
-    
+
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(type === 'orders' ? 'Orders' : 'Products');
-    
+
     if (data.length > 0) {
       worksheet.columns = Object.keys(data[0]).map(key => ({
         header: key,
@@ -754,10 +814,10 @@ exports.exportReport = async (req, res) => {
       }));
       worksheet.addRows(data);
     }
-    
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${type}-report-${Date.now()}.xlsx`);
-    
+
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
@@ -774,12 +834,12 @@ exports.exportReport = async (req, res) => {
 exports.updateStoreSettings = async (req, res) => {
   try {
     const { storeLogo, storeBanner, storeDescription, policies, shippingZones, taxSettings, payoutSettings } = req.body;
-    
+
     const seller = await Seller.findOne({ user: req.user.id });
     if (!seller) {
       return res.status(404).json({ success: false, message: 'Seller not found' });
     }
-    
+
     if (storeLogo) seller.storeLogo = storeLogo;
     if (storeBanner) seller.storeBanner = storeBanner;
     if (storeDescription) seller.storeDescription = storeDescription;
@@ -790,9 +850,9 @@ exports.updateStoreSettings = async (req, res) => {
     if (shippingZones) seller.settings.shippingZones = shippingZones;
     if (taxSettings) seller.settings.taxSettings = taxSettings;
     if (payoutSettings) seller.settings.paymentPreferences = payoutSettings;
-    
+
     await seller.save();
-    
+
     res.status(200).json({
       success: true,
       message: 'Store settings updated successfully',
@@ -812,7 +872,7 @@ exports.updateStoreSettings = async (req, res) => {
 exports.sendMessage = async (req, res) => {
   try {
     const { receiverId, orderId, subject, message, attachments } = req.body;
-    
+
     const newMessage = await Message.create({
       sender: req.user.id,
       receiver: receiverId,
@@ -821,7 +881,7 @@ exports.sendMessage = async (req, res) => {
       message,
       attachments: attachments || []
     });
-    
+
     res.status(201).json({
       success: true,
       message: 'Message sent successfully',
@@ -848,7 +908,7 @@ exports.getMessages = async (req, res) => {
       .populate('receiver', 'name')
       .sort('-createdAt')
       .limit(50);
-    
+
     res.status(200).json({
       success: true,
       messages
@@ -870,7 +930,7 @@ exports.getDisputes = async (req, res) => {
       .populate('customer', 'name email')
       .populate('order', '_id totalPrice')
       .sort('-createdAt');
-    
+
     res.status(200).json({
       success: true,
       disputes
@@ -887,24 +947,24 @@ exports.getDisputes = async (req, res) => {
 exports.updateDispute = async (req, res) => {
   try {
     const { resolution, resolutionNotes, resolutionAmount } = req.body;
-    
+
     const dispute = await Dispute.findOne({
       _id: req.params.disputeId,
       seller: req.user.id
     });
-    
+
     if (!dispute) {
       return res.status(404).json({ success: false, message: 'Dispute not found' });
     }
-    
+
     dispute.status = 'resolved';
     dispute.resolution = resolution;
     dispute.resolutionNotes = resolutionNotes;
     dispute.resolutionAmount = resolutionAmount;
     dispute.resolvedAt = new Date();
-    
+
     await dispute.save();
-    
+
     res.status(200).json({
       success: true,
       message: 'Dispute resolved successfully',
@@ -927,39 +987,39 @@ exports.generateShippingLabel = async (req, res) => {
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     const seller = await Seller.findOne({ user: req.user.id });
-    
+
     const doc = new PDFDocument({ size: 'A6', margin: 20 });
-    
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=shipping-label-${order._id}.pdf`);
-    
+
     doc.pipe(res);
-    
+
     doc.fontSize(16).font('Helvetica-Bold').text('SHIPPING LABEL', { align: 'center' });
     doc.moveDown();
-    
+
     doc.fontSize(10).font('Helvetica-Bold').text('FROM:');
     doc.fontSize(10).font('Helvetica');
     doc.text(seller?.storeName || 'Seller Store');
     doc.text(seller?.businessAddress?.street || '');
     doc.text(`${seller?.businessAddress?.city || ''}, ${seller?.businessAddress?.state || ''}`);
     doc.moveDown();
-    
+
     doc.fontSize(10).font('Helvetica-Bold').text('TO:');
     doc.fontSize(10).font('Helvetica');
     doc.text(order.shippingAddress.name);
     doc.text(order.shippingAddress.street);
     doc.text(`${order.shippingAddress.city}, ${order.shippingAddress.state}`);
     doc.moveDown();
-    
+
     doc.fontSize(10).font('Helvetica-Bold').text('ORDER DETAILS:');
     doc.fontSize(10).font('Helvetica');
     doc.text(`Order ID: ${order._id}`);
     doc.text(`Tracking #: ${order.trackingNumber || 'N/A'}`);
     doc.text(`Carrier: ${order.carrier || 'N/A'}`);
-    
+
     doc.end();
   } catch (error) {
     console.error('Generate shipping label error:', error);
@@ -973,16 +1033,16 @@ exports.generateShippingLabel = async (req, res) => {
 exports.processReturn = async (req, res) => {
   try {
     const { action, refundAmount, adminComments } = req.body;
-    
+
     const order = await Order.findById(req.params.orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     if (!order.returnRequest) {
       return res.status(400).json({ success: false, message: 'No return request found' });
     }
-    
+
     if (action === 'approve') {
       order.returnRequest.status = 'approved';
       order.returnRequest.approvedAt = new Date();
@@ -990,10 +1050,10 @@ exports.processReturn = async (req, res) => {
       order.returnRequest.status = 'rejected';
       order.returnRequest.rejectedAt = new Date();
     }
-    
+
     order.returnRequest.adminComments = adminComments;
     await order.save();
-    
+
     res.status(200).json({
       success: true,
       message: `Return request ${action}d successfully`,

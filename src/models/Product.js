@@ -83,10 +83,10 @@ const productSchema = new mongoose.Schema({
     required: true
   },
   subcategory: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: 'Category',
-  default: null  // Change from required to optional
-},
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null  // Change from required to optional
+  },
   brand: String,
   tags: [String],
   seoKeywords: [String],
@@ -114,6 +114,10 @@ const productSchema = new mongoose.Schema({
     width: Number,
     height: Number
   },
+  ratings: {
+    average: { type: Number, default: 0 },
+    count: { type: Number, default: 0 }
+  },
   returnPolicy: String,
   warranty: String
 }, {
@@ -124,7 +128,7 @@ const productSchema = new mongoose.Schema({
 productSchema.index({ name: 'text', description: 'text', tags: 'text', brand: 'text' });
 
 // Generate slug before saving
-productSchema.pre('save', function(next) {
+productSchema.pre('save', function (next) {
   if (this.isModified('name')) {
     this.slug = this.name
       .toLowerCase()

@@ -4,6 +4,7 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 const {
   getProducts,
   getProductById,
+  getProductBySlug,  // Add this import
   getRelatedProducts,
   getProductSuggestions,
   filterProducts,
@@ -20,9 +21,13 @@ const {
 router.get('/', getProducts);
 router.get('/suggestions', getProductSuggestions);
 router.get('/filter', filterProducts);
+
+// IMPORTANT: Put slug route BEFORE id route
+router.get('/slug/:slug', getProductBySlug);  // Add this route for slug-based lookup
+
 router.get('/:id/related', getRelatedProducts);
 router.get('/:id/reviews', getProductReviews);
-router.get('/:id', getProductById);
+router.get('/:id', getProductById);  // This should come AFTER slug route
 
 // Protected routes for sellers
 router.post('/', protect, authorize('seller', 'admin'), createProduct);

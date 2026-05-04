@@ -18,7 +18,7 @@ const productRoutes = require('./src/routes/productRoutes');
 const cartRoutes = require('./src/routes/cartRoutes');
 const orderRoutes = require('./src/routes/orderRoutes');
 const sellerRoutes = require('./src/routes/sellerRoutes');
-const sellerProductRoutes = require('./src/routes/sellerProductRoutes');
+
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 // const reviewRoutes = require('./src/routes/reviewRoutes');
@@ -52,7 +52,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 app.use(morgan('dev'));
-app.use('/api', limiter);
+// app.use('/api', limiter);
 
 // Routes
 app.use('/api/admin', adminRoutes);
@@ -65,8 +65,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payment', paymentRoutes);
 
 app.use('/api/seller', sellerRoutes);
-app.use('/api/seller', sellerProductRoutes);  
-// app.use('/api/reviews', reviewRoutes);
+
 app.use('/api/categories', categoryRoutes);
 
 

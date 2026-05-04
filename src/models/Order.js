@@ -13,6 +13,10 @@ const orderItemSchema = new mongoose.Schema({
   seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+   seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 });
 

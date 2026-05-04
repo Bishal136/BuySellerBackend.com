@@ -1,19 +1,37 @@
 const User = require('../models/User');
+const Seller = require('../models/Seller');
 const jwt = require('jsonwebtoken');
 const otpService = require('../utils/otpService');
 
 // Generate JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d',
   });
 };
 
 // Generate Refresh Token
-const generateRefreshToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
+const generateRefreshToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRE || '30d',
   });
+};
+
+const findUserByEmail = async (email) => {
+  // First check in User collection (customers)
+  let user = await User.findOne({ email });
+  if (user) {
+    return { user, source: 'user', role: user.role };
+  }
+  
+  // Then check in Seller collection (sellers) - check email field only
+  // Since sellers use 'email' field for login
+  let seller = await Seller.findOne({ email: email });
+  if (seller) {
+    return { user: seller, source: 'seller', role: 'seller' };
+  }
+  
+  return null;
 };
 
 // @desc    Request OTP for login/registration
@@ -34,19 +52,24 @@ exports.requestOTP = async (req, res) => {
 
     // Check if user exists for login purpose
     if (purpose === 'login') {
-      const userExists = await User.findOne({ email });
-      if (!userExists) {
+      const found = await findUserByEmail(email);
+      
+      if (!found) {
         return res.status(404).json({
           success: false,
           message: 'No account found with this email. Please register first.',
         });
       }
+      
+      console.log(`[Auth] User found in ${found.source} collection with role: ${found.role}`);
     }
 
     // Check if user already exists for registration
     if (purpose === 'registration') {
       const userExists = await User.findOne({ email });
-      if (userExists) {
+      const sellerExists = await Seller.findOne({ email });
+      
+      if (userExists || sellerExists) {
         return res.status(400).json({
           success: false,
           message: 'User already exists. Please login instead.',
@@ -55,7 +78,7 @@ exports.requestOTP = async (req, res) => {
     }
 
     // Send OTP
-    const result = await otpService.createAndSendOTP(email, purpose);
+    await otpService.createAndSendOTP(email, purpose);
 
     res.status(200).json({
       success: true,
@@ -98,18 +121,22 @@ exports.verifyOTPAndLogin = async (req, res) => {
     }
 
     let user;
+    let userSource;
+    let userRole;
 
     if (purpose === 'registration') {
-      // Check if user already exists
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
+      // REGISTRATION - Create new customer (not seller)
+      const userExists = await User.findOne({ email });
+      const sellerExists = await Seller.findOne({ email });
+      
+      if (userExists || sellerExists) {
         return res.status(400).json({
           success: false,
           message: 'User already exists. Please login.',
         });
       }
 
-      // Create new user
+      // Create new customer
       user = await User.create({
         name: name || email.split('@')[0],
         email,
@@ -117,34 +144,45 @@ exports.verifyOTPAndLogin = async (req, res) => {
         isVerified: true,
         lastLogin: new Date(),
         loginCount: 1,
-        role: 'customer' // Default role for registration
+        role: 'customer'
       });
+      userSource = 'user';
+      userRole = 'customer';
       
-      console.log(`[Auth] New user registered: ${email} with role: ${user.role}`);
+      console.log(`[Auth] New customer registered: ${email}`);
+      
     } else if (purpose === 'login') {
-      // Find existing user
-      user = await User.findOne({ email });
-      if (!user) {
+      // LOGIN - Find existing user
+      const found = await findUserByEmail(email);
+      
+      if (!found) {
         return res.status(404).json({
           success: false,
           message: 'User not found. Please register first.',
         });
       }
-
+      
+      user = found.user;
+      userSource = found.source;
+      userRole = found.role;
+      
       // Check if user is active
-      if (!user.isActive) {
+      if (user.isActive === false) {
         return res.status(403).json({
           success: false,
           message: 'Your account has been deactivated. Please contact support.',
         });
       }
 
-      // Update login info
+      // Update last login
       user.lastLogin = new Date();
-      user.loginCount = (user.loginCount || 0) + 1;
+      if (userSource === 'user') {
+        user.loginCount = (user.loginCount || 0) + 1;
+      }
       await user.save();
       
-      console.log(`[Auth] User logged in: ${email} with role: ${user.role}`);
+      console.log(`[Auth] ${userSource === 'seller' ? 'Seller' : 'Customer'} logged in: ${email}`);
+      
     } else {
       return res.status(400).json({
         success: false,
@@ -153,20 +191,37 @@ exports.verifyOTPAndLogin = async (req, res) => {
     }
 
     // Generate tokens
-    const token = generateToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+    const token = generateToken(user._id, userRole);
+    const refreshToken = generateRefreshToken(user._id, userRole);
 
-    // Return user with role
-    const userResponse = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      phone: user.phone,
-      profileImage: user.profileImage,
-      addresses: user.addresses,
-      isVerified: user.isVerified,
-    };
+    // Prepare user response based on source
+    let userResponse;
+    if (userSource === 'seller') {
+      userResponse = {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: 'seller',
+        phone: user.phone,
+        profileImage: user.storeLogo || '',
+        addresses: [],
+        isVerified: user.verificationStatus === 'verified',
+        storeName: user.storeName,
+        storeSlug: user.storeSlug,
+        storeLogo: user.storeLogo
+      };
+    } else {
+      userResponse = {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        profileImage: user.profileImage,
+        addresses: user.addresses,
+        isVerified: user.isVerified,
+      };
+    }
 
     console.log(`[Auth] User response:`, userResponse);
 
@@ -176,6 +231,7 @@ exports.verifyOTPAndLogin = async (req, res) => {
       refreshToken,
       user: userResponse,
     });
+    
   } catch (error) {
     console.error('[Auth] Verify OTP error:', error);
     res.status(500).json({
@@ -238,8 +294,15 @@ exports.refreshToken = async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.id);
-
+    
+    let user = await User.findById(decoded.id);
+    let userRole = 'customer';
+    
+    if (!user) {
+      user = await Seller.findById(decoded.id);
+      userRole = 'seller';
+    }
+    
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -247,8 +310,8 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    const newToken = generateToken(user._id);
-    const newRefreshToken = generateRefreshToken(user._id);
+    const newToken = generateToken(user._id, userRole);
+    const newRefreshToken = generateRefreshToken(user._id, userRole);
 
     res.status(200).json({
       success: true,
@@ -286,14 +349,29 @@ exports.logout = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
+    let user = await User.findById(req.user.id)
       .select('-password')
       .populate('wishlist')
       .populate('recentlyViewed.product');
+    
+    let userSource = 'user';
+    
+    if (!user) {
+      user = await Seller.findById(req.user.id);
+      userSource = 'seller';
+    }
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
 
     res.status(200).json({
       success: true,
       user,
+      source: userSource
     });
   } catch (error) {
     res.status(500).json({

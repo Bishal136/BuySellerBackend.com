@@ -54,19 +54,39 @@ exports.getUserOrders = async (req, res) => {
 // @access  Private
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
+    const { id } = req.params;
+    
+    console.log('=== GET ORDER BY ID ===');
+    console.log('Order ID:', id);
+    console.log('Logged-in User ID:', req.user.id);
+    console.log('Logged-in User Role:', req.user.role);
+    
+    const order = await Order.findById(id)
       .populate('user', 'name email phone')
       .populate('orderItems.product', 'name images brand slug');
     
     if (!order) {
+      console.log('Order not found');
       return res.status(404).json({
         success: false,
         message: 'Order not found'
       });
     }
     
+    console.log('Order found - User ID in order:', order.user._id.toString());
+    console.log('Order user type:', typeof order.user._id);
+    console.log('Request user type:', typeof req.user.id);
+    console.log('Do they match?', order.user._id.toString() === req.user.id.toString());
+    
     // Check if user owns order or is admin
-    if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
+    const isOwner = order.user._id.toString() === req.user.id.toString();
+    const isAdmin = req.user.role === 'admin';
+    
+    console.log('Is owner:', isOwner);
+    console.log('Is admin:', isAdmin);
+    
+    if (!isOwner && !isAdmin) {
+      console.log('Authorization failed - User does not own this order');
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this order'
@@ -92,35 +112,55 @@ exports.getOrderById = async (req, res) => {
 exports.cancelOrder = async (req, res) => {
   try {
     const { reason } = req.body;
-    const order = await Order.findById(req.params.id);
+    const { id } = req.params;
+    
+    console.log('=== CANCEL ORDER ===');
+    console.log('Order ID:', id);
+    console.log('User ID:', req.user.id);
+    console.log('User Role:', req.user.role);
+    
+    const order = await Order.findById(id);
     
     if (!order) {
+      console.log('Order not found');
       return res.status(404).json({
         success: false,
         message: 'Order not found'
       });
     }
     
-    // Check if user owns order
-    if (order.user.toString() !== req.user.id && req.user.role !== 'admin') {
+    console.log('Order user ID:', order.user.toString());
+    console.log('Comparing:', order.user.toString() === req.user.id.toString());
+    
+    // Check if user owns order or is admin
+    const isOwner = order.user.toString() === req.user.id.toString();
+    const isAdmin = req.user.role === 'admin';
+    
+    if (!isOwner && !isAdmin) {
+      console.log('Not authorized - User does not own this order');
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to cancel this order'
+        message: 'Not authorized to cancel this order. Order belongs to another user.'
       });
     }
     
     // Check if order can be cancelled
-    if (!['pending', 'confirmed'].includes(order.status)) {
+    const cancellableStatuses = ['pending', 'confirmed', 'processing'];
+    if (!cancellableStatuses.includes(order.status)) {
+      console.log('Order cannot be cancelled. Current status:', order.status);
       return res.status(400).json({
         success: false,
-        message: `Order cannot be cancelled because it is already ${order.status}`
+        message: `Order cannot be cancelled because it is already ${order.status}. Only pending, confirmed, or processing orders can be cancelled.`
       });
     }
     
     // Restore product stock
     for (const item of order.orderItems) {
       await Product.findByIdAndUpdate(item.product, {
-        $inc: { stock: item.quantity, soldCount: -item.quantity }
+        $inc: { 
+          stock: item.quantity,
+          soldCount: -item.quantity
+        }
       });
     }
     
@@ -129,6 +169,8 @@ exports.cancelOrder = async (req, res) => {
     order.cancelReason = reason || 'Cancelled by customer';
     
     await order.save();
+    
+    console.log('Order cancelled successfully');
     
     res.status(200).json({
       success: true,
@@ -364,3 +406,146 @@ exports.getOrderStats = async (req, res) => {
     });
   }
 };
+
+
+// @desc    Create new order
+// @route   POST /api/orders/create
+// @access  Private
+exports.createOrder = async (req, res) => {
+  try {
+    console.log('=== CREATE ORDER REQUEST ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    console.log('User ID:', req.user.id);
+    
+    const {
+      shippingAddress,
+      paymentMethod,
+      orderItems,
+      itemsPrice,
+      taxPrice,
+      shippingPrice,
+      discountPrice,
+      notes,
+      collectionPoint
+    } = req.body;
+
+    // Detailed validation
+    const errors = [];
+    
+    if (!paymentMethod) {
+      errors.push('Payment method is required');
+    }
+    
+    if (!orderItems || orderItems.length === 0) {
+      errors.push('Order items are required');
+    }
+    
+    if (!shippingAddress && !collectionPoint) {
+      errors.push('Either shipping address or collection point is required');
+    }
+
+    if (errors.length > 0) {
+      console.log('Validation errors:', errors);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors
+      });
+    }
+
+    // Calculate total price
+    const calculatedItemsPrice = itemsPrice || orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const calculatedTaxPrice = taxPrice || 0;
+    const calculatedShippingPrice = shippingPrice || (collectionPoint ? (collectionPoint.fee || 0) : 110);
+    const calculatedDiscountPrice = discountPrice || 0;
+    const totalPrice = calculatedItemsPrice + calculatedTaxPrice + calculatedShippingPrice - calculatedDiscountPrice;
+
+    console.log('Price calculation:', {
+      itemsPrice: calculatedItemsPrice,
+      taxPrice: calculatedTaxPrice,
+      shippingPrice: calculatedShippingPrice,
+      discountPrice: calculatedDiscountPrice,
+      totalPrice
+    });
+
+    // Generate unique order ID
+    const orderId = 'ORD-' + Date.now().toString().slice(-8) + Math.random().toString(36).substr(2, 4).toUpperCase();
+
+    // Prepare order data
+    const orderData = {
+      orderId,
+      user: req.user.id,
+      paymentMethod,
+      orderItems: orderItems.map(item => ({
+        product: item.product,
+        name: item.name,
+        image: item.image,
+        price: item.price,
+        quantity: item.quantity,
+        seller: item.seller
+      })),
+      itemsPrice: calculatedItemsPrice,
+      taxPrice: calculatedTaxPrice,
+      shippingPrice: calculatedShippingPrice,
+      discountPrice: calculatedDiscountPrice,
+      totalPrice,
+      notes: notes || '',
+      status: 'pending',
+      createdAt: new Date()
+    };
+
+    // Add shipping address if provided
+    if (shippingAddress) {
+      orderData.shippingAddress = shippingAddress;
+    }
+
+    // Add collection point if selected
+    if (collectionPoint) {
+      orderData.collectionPoint = collectionPoint;
+      orderData.deliveryType = 'pickup';
+    }
+
+    console.log('Order data to save:', JSON.stringify(orderData, null, 2));
+
+    // Create order
+    const order = await Order.create(orderData);
+
+    console.log('Order created successfully:', order._id);
+
+    // Update product stock
+    for (const item of order.orderItems) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { 
+          stock: -item.quantity,
+          soldCount: item.quantity
+        }
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Order created successfully',
+      order
+    });
+  } catch (error) {
+    console.error('Create order error details:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Handle mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+

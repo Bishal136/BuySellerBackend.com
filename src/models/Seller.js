@@ -1,11 +1,21 @@
 const mongoose = require('mongoose');
 
 const sellerSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+  // NO user field - Seller is completely independent
+  
+  name: {
+    type: String,
+    required: true
+  },
+  email: {
+    type: String,
     required: true,
-    unique: true
+    unique: true,
+    lowercase: true
+  },
+  phone: {
+    type: String,
+    required: true
   },
   storeName: {
     type: String,
@@ -28,7 +38,8 @@ const sellerSchema = new mongoose.Schema({
   },
   storeDescription: {
     type: String,
-    maxLength: 1000
+    maxLength: 1000,
+    default: ''
   },
   businessName: {
     type: String,
@@ -43,14 +54,15 @@ const sellerSchema = new mongoose.Schema({
     required: true
   },
   businessAddress: {
-    street: String,
-    city: String,
-    state: String,
-    postalCode: String,
-    country: String
+    street: { type: String, default: '' },
+    city: { type: String, default: '' },
+    state: { type: String, default: '' },
+    postalCode: { type: String, default: '' },
+    country: { type: String, default: 'Bangladesh' }
   },
   taxId: {
-    type: String
+    type: String,
+    default: ''
   },
   verificationStatus: {
     type: String,
@@ -58,16 +70,18 @@ const sellerSchema = new mongoose.Schema({
     default: 'pending'
   },
   verificationDocuments: [{
-    type: String,
     name: String,
     url: String,
     uploadedAt: Date
   }],
-  verificationNotes: String,
+  verificationNotes: {
+    type: String,
+    default: ''
+  },
   verifiedAt: Date,
   commissionRate: {
     type: Number,
-    default: 10 // 10% commission
+    default: 10
   },
   totalSales: {
     type: Number,
@@ -93,6 +107,13 @@ const sellerSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  lastLogin: {
+    type: Date
+  },
+  loginCount: {
+    type: Number,
+    default: 0
+  },
   settings: {
     shippingZones: [{
       name: String,
@@ -101,11 +122,11 @@ const sellerSchema = new mongoose.Schema({
       freeShippingThreshold: Number
     }],
     taxSettings: {
-      taxRate: { type: Number, default: 10 },
+      taxRate: { type: Number, default: 0 },
       isTaxIncluded: { type: Boolean, default: false }
     },
-    returnPolicy: String,
-    shippingPolicy: String,
+    returnPolicy: { type: String, default: '' },
+    shippingPolicy: { type: String, default: '' },
     paymentPreferences: {
       payoutMethod: {
         type: String,

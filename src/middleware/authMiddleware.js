@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Seller = require('../models/Seller'); // ← Import Seller model
 
 exports.protect = async (req, res, next) => {
   try {
@@ -27,8 +28,19 @@ exports.protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('Decoded token:', decoded);
     
-    // Get user from token
-    const user = await User.findById(decoded.id).select('-password');
+    // Try to find user in User collection first
+    let user = await User.findById(decoded.id).select('-password');
+    let isSeller = false;
+    
+    // If not found in User, try Seller collection
+    if (!user) {
+      const seller = await Seller.findById(decoded.id);
+      if (seller) {
+        user = seller;
+        isSeller = true;
+        console.log('Seller found in Seller collection:', seller.storeName);
+      }
+    }
     
     if (!user) {
       console.log('User not found for id:', decoded.id);
@@ -39,18 +51,32 @@ exports.protect = async (req, res, next) => {
     }
     
     // Check if user is active
-    if (!user.isActive) {
-      console.log('User account deactivated:', user.email);
+    if (user.isActive === false) {
+      console.log('Account deactivated:', user.email || user.businessEmail);
       return res.status(401).json({
         success: false,
         message: 'Your account has been deactivated. Please contact support.',
       });
     }
     
-    console.log(`User authenticated: ${user.email} with role: ${user.role}`);
+    // For sellers, use businessEmail for logging
+    const userEmail = user.email || user.businessEmail;
+    const userRole = isSeller ? 'seller' : user.role;
     
-    // Attach user to request
-    req.user = user;
+    console.log(`User authenticated: ${userEmail} with role: ${userRole}`);
+    
+    // Attach user to request with role information
+    req.user = {
+      id: user._id,
+      name: user.name || user.storeName,
+      email: user.email || user.businessEmail,
+      role: isSeller ? 'seller' : user.role,
+      isActive: user.isActive,
+      // Include additional seller info if needed
+      storeName: user.storeName,
+      storeSlug: user.storeSlug
+    };
+    
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);

@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Review = require('../models/Review');
 
 exports.getProducts = async (req, res) => {
   try {
@@ -96,57 +97,31 @@ exports.getProducts = async (req, res) => {
   }
 };
 
-// @desc    Get single product
-// @route   GET /api/products/:id
+// @desc    Get related products
+// @route   GET /api/products/:id/related
 // @access  Public
-exports.getProductById = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id)
-      .populate('category', 'name slug')
-      .populate('seller', 'name storeName storeLogo')
-      .populate('reviews.user', 'name profileImage');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    product.views += 1;
-    await product.save();
-
-    res.status(200).json({
-      success: true,
-      product
-    });
-  } catch (error) {
-    console.error('Get product error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
 exports.getRelatedProducts = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
-
+    const { id } = req.params;
+    
+    const product = await Product.findById(id);
+    
     if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
       });
     }
-
+    
     const relatedProducts = await Product.find({
       _id: { $ne: product._id },
       status: 'active',
-      category: product.category
+      category: product.category,
+      stock: { $gt: 0 }
     })
       .limit(parseInt(req.query.limit) || 4)
-      .populate('category', 'name');
+      .populate('category', 'name')
+      .populate('seller', 'storeName');
 
     res.status(200).json({
       success: true,
@@ -252,52 +227,6 @@ exports.filterProducts = async (req, res) => {
   }
 };
 
-// @desc    Get product reviews
-// @route   GET /api/products/:id/reviews
-// @access  Public
-exports.getProductReviews = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id)
-      .select('reviews')
-      .populate('reviews.user', 'name profileImage');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const startIndex = (page - 1) * limit;
-
-    const reviews = product.reviews.slice(startIndex, startIndex + limit);
-    const total = product.reviews.length;
-
-    res.status(200).json({
-      success: true,
-      reviews,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      stats: {
-        average: product.ratings.average,
-        total: product.ratings.count,
-        distribution: getRatingDistribution(product.reviews)
-      }
-    });
-  } catch (error) {
-    console.error('Get reviews error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
 
 // @desc    Create product
 // @route   POST /api/products
@@ -400,13 +329,20 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
-// @desc    Add review
-// @route   POST /api/products/:id/reviews
-// @access  Private
-exports.addReview = async (req, res) => {
+
+
+// @desc    Get product by slug
+// @route   GET /api/products/slug/:slug
+// @access  Public
+exports.getProductBySlug = async (req, res) => {
   try {
-    const { rating, title, comment } = req.body;
-    const product = await Product.findById(req.params.id);
+    const { slug } = req.params;
+    
+    const product = await Product.findOne({ slug, status: 'active' })
+      .populate('category', 'name slug')
+      .populate('subcategory', 'name slug')
+      .populate('seller', 'name storeName storeLogo storeDescription');
+      // REMOVED: .populate('reviews.user', 'name profileImage') - Product doesn't have reviews embedded
 
     if (!product) {
       return res.status(404).json({
@@ -415,37 +351,218 @@ exports.addReview = async (req, res) => {
       });
     }
 
-    // Check if user already reviewed
-    const alreadyReviewed = product.reviews.find(
-      review => review.user.toString() === req.user.id
-    );
+    // Increment view count
+    product.views = (product.views || 0) + 1;
+    await product.save();
 
-    if (alreadyReviewed) {
+    res.status(200).json({
+      success: true,
+      product
+    });
+  } catch (error) {
+    console.error('Get product by slug error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Get single product by ID
+// @route   GET /api/products/:id
+// @access  Public
+exports.getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if ID is a valid MongoDB ObjectId
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    
+    if (!isValidObjectId) {
       return res.status(400).json({
         success: false,
-        message: 'Product already reviewed'
+        message: 'Invalid product ID format'
+      });
+    }
+    
+    const product = await Product.findById(id)
+      .populate('category', 'name slug')
+      .populate('subcategory', 'name slug')
+      .populate('seller', 'name storeName storeLogo storeDescription');
+      // REMOVED: .populate('reviews.user', 'name profileImage') - Product doesn't have reviews embedded
+
+    if (!product || product.status !== 'active') {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
       });
     }
 
-    const review = {
-      user: req.user.id,
-      rating: Number(rating),
-      title,
-      comment
-    };
-
-    product.reviews.push(review);
-    product.ratings.count = product.reviews.length;
-    product.ratings.average = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
-
+    // Increment view count
+    product.views = (product.views || 0) + 1;
     await product.save();
 
+    res.status(200).json({
+      success: true,
+      product
+    });
+  } catch (error) {
+    console.error('Get product by ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+// ==================== REVIEW CONTROLLERS ====================
+
+// @desc    Get product reviews - CORRECT VERSION
+// @route   GET /api/products/:id/reviews
+// @access  Public
+exports.getProductReviews = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+    if (!isValidObjectId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format'
+      });
+    }
+    
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+    
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const startIndex = (page - 1) * limit;
+    
+    const reviews = await Review.find({ product: id, status: 'approved' })
+      .populate('user', 'name')
+      .sort('-createdAt')
+      .limit(limit)
+      .skip(startIndex);
+    
+    const total = await Review.countDocuments({ product: id, status: 'approved' });
+    
+    const allReviews = await Review.find({ product: id, status: 'approved' });
+    const average = allReviews.length > 0
+      ? allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length
+      : 0;
+    
+    const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    allReviews.forEach(review => {
+      distribution[review.rating]++;
+    });
+    
+    res.status(200).json({
+      success: true,
+      reviews,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      },
+      stats: {
+        average: Number(average.toFixed(1)),
+        total,
+        distribution
+      }
+    });
+  } catch (error) {
+    console.error('Get reviews error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Add review - CORRECT VERSION
+// @route   POST /api/products/:id/reviews
+// @access  Private
+exports.addReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, title, comment } = req.body;
+    
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 1 and 5'
+      });
+    }
+    
+    // Check if product exists
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+    
+    // Check if user already reviewed
+    const existingReview = await Review.findOne({
+      product: id,
+      user: req.user.id
+    });
+    
+    if (existingReview) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already reviewed this product'
+      });
+    }
+    
+    // Create review
+    const review = await Review.create({
+      product: id,
+      user: req.user.id,
+      rating: parseInt(rating),
+      title: title || '',
+      comment: comment,
+      verifiedPurchase: false,
+      status: 'approved'
+    });
+    
+    // Update product rating
+    const allReviews = await Review.find({ product: id, status: 'approved' });
+    const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
+    const averageRating = allReviews.length > 0 ? totalRating / allReviews.length : 0;
+    
+    product.ratings = {
+      average: Number(averageRating.toFixed(1)),
+      count: allReviews.length
+    };
+    await product.save();
+    
+    // Populate user info
+    await review.populate('user', 'name');
+    
     res.status(201).json({
       success: true,
-      message: 'Review added successfully'
+      message: 'Review added successfully',
+      review
     });
   } catch (error) {
     console.error('Add review error:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already reviewed this product'
+      });
+    }
     res.status(500).json({
       success: false,
       message: error.message
@@ -459,32 +576,37 @@ exports.addReview = async (req, res) => {
 exports.updateReview = async (req, res) => {
   try {
     const { rating, title, comment } = req.body;
-    const product = await Product.findOne({ 'reviews._id': req.params.reviewId });
-
-    if (!product) {
+    
+    const review = await Review.findById(req.params.reviewId);
+    
+    if (!review) {
       return res.status(404).json({
         success: false,
         message: 'Review not found'
       });
     }
-
-    const review = product.reviews.id(req.params.reviewId);
-
+    
     if (review.user.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized'
       });
     }
-
+    
     review.rating = rating;
     review.title = title;
     review.comment = comment;
-
-    product.ratings.average = product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length;
-
+    await review.save();
+    
+    const product = await Product.findById(review.product);
+    const allReviews = await Review.find({ product: review.product, status: 'approved' });
+    const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
+    product.ratings = {
+      average: totalRating / allReviews.length,
+      count: allReviews.length
+    };
     await product.save();
-
+    
     res.status(200).json({
       success: true,
       message: 'Review updated successfully'
@@ -503,32 +625,42 @@ exports.updateReview = async (req, res) => {
 // @access  Private
 exports.deleteReview = async (req, res) => {
   try {
-    const product = await Product.findOne({ 'reviews._id': req.params.reviewId });
-
-    if (!product) {
+    const review = await Review.findById(req.params.reviewId);
+    
+    if (!review) {
       return res.status(404).json({
         success: false,
         message: 'Review not found'
       });
     }
-
-    const review = product.reviews.id(req.params.reviewId);
-
+    
     if (review.user.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Not authorized'
       });
     }
-
-    review.deleteOne();
-    product.ratings.count = product.reviews.length;
-    product.ratings.average = product.reviews.length > 0
-      ? product.reviews.reduce((acc, item) => item.rating + acc, 0) / product.reviews.length
-      : 0;
-
+    
+    const productId = review.product;
+    await review.deleteOne();
+    
+    const product = await Product.findById(productId);
+    const allReviews = await Review.find({ product: productId, status: 'approved' });
+    
+    if (allReviews.length > 0) {
+      const totalRating = allReviews.reduce((sum, r) => sum + r.rating, 0);
+      product.ratings = {
+        average: totalRating / allReviews.length,
+        count: allReviews.length
+      };
+    } else {
+      product.ratings = {
+        average: 0,
+        count: 0
+      };
+    }
     await product.save();
-
+    
     res.status(200).json({
       success: true,
       message: 'Review deleted successfully'
@@ -541,6 +673,9 @@ exports.deleteReview = async (req, res) => {
     });
   }
 };
+
+
+
 
 // Helper function for rating distribution
 function getRatingDistribution(reviews) {
