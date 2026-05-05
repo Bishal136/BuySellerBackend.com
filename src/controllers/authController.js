@@ -50,6 +50,15 @@ exports.requestOTP = async (req, res) => {
       });
     }
 
+    // Strict email validation to prevent SMTP errors like RFC 5321
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email) || email.includes('@.')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address format',
+      });
+    }
+
     // Check if user exists for login purpose
     if (purpose === 'login') {
       const found = await findUserByEmail(email);
@@ -99,9 +108,13 @@ exports.requestOTP = async (req, res) => {
 // @access  Public
 exports.verifyOTPAndLogin = async (req, res) => {
   try {
-    const { email, otp, purpose, name, phone } = req.body;
+    let { email, otp, purpose, name, phone } = req.body;
 
     console.log('Verify OTP request:', { email, otp, purpose, name, phone });
+    
+    // Clean inputs
+    if (email) email = email.trim().toLowerCase();
+    if (otp) otp = otp.trim();
 
     if (!email || !otp || !purpose) {
       return res.status(400).json({
