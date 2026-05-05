@@ -48,8 +48,8 @@ app.use(cors({
   origin: function (origin, callback) {
     const allowedOrigins = [
       process.env.FRONTEND_URL,
-      'https://buyselling.netlify.app/',
-      "http://localhost:3000/"
+      'https://buyselling.netlify.app',
+      "http://localhost:3000"
     ];
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
