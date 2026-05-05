@@ -44,7 +44,7 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors({
-  origin: [process.env.FRONTEND_URL || 'http://localhost:3000', '*'],
+  origin: [process.env.FRONTEND_URL || 'https://buyselling.netlify.app/'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -72,7 +72,7 @@ app.use('/api/banners', bannerRoutes);
 
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Server is running',
