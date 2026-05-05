@@ -413,9 +413,9 @@ exports.getOrderStats = async (req, res) => {
 // @access  Private
 exports.createOrder = async (req, res) => {
   try {
-    console.log('=== CREATE ORDER REQUEST ===');
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('User ID:', req.user.id);
+    // console.log('=== CREATE ORDER REQUEST ===');
+    // console.log('Request body:', JSON.stringify(req.body, null, 2));
+    // console.log('User ID:', req.user.id);
     
     const {
       shippingAddress,
@@ -460,13 +460,13 @@ exports.createOrder = async (req, res) => {
     const calculatedDiscountPrice = discountPrice || 0;
     const totalPrice = calculatedItemsPrice + calculatedTaxPrice + calculatedShippingPrice - calculatedDiscountPrice;
 
-    console.log('Price calculation:', {
-      itemsPrice: calculatedItemsPrice,
-      taxPrice: calculatedTaxPrice,
-      shippingPrice: calculatedShippingPrice,
-      discountPrice: calculatedDiscountPrice,
-      totalPrice
-    });
+    // console.log('Price calculation:', {
+    //   itemsPrice: calculatedItemsPrice,
+    //   taxPrice: calculatedTaxPrice,
+    //   shippingPrice: calculatedShippingPrice,
+    //   discountPrice: calculatedDiscountPrice,
+    //   totalPrice
+    // });
 
     // Generate unique order ID
     const orderId = 'ORD-' + Date.now().toString().slice(-8) + Math.random().toString(36).substr(2, 4).toUpperCase();
@@ -510,12 +510,12 @@ exports.createOrder = async (req, res) => {
       orderData.deliveryType = 'pickup';
     }
 
-    console.log('Order data to save:', JSON.stringify(orderData, null, 2));
+    // console.log('Order data to save:', JSON.stringify(orderData, null, 2));
 
     // Create order
     const order = await Order.create(orderData);
 
-    console.log('Order created successfully:', order._id);
+    // console.log('Order created successfully:', order._id);
 
     // Update product stock
     for (const item of order.orderItems) {

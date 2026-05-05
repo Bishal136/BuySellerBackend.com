@@ -26,7 +26,7 @@ exports.protect = async (req, res, next) => {
     
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Decoded token:', decoded);
+    // console.log('Decoded token:', decoded);
     
     // Try to find user in User collection first
     let user = await User.findById(decoded.id).select('-password');
@@ -38,7 +38,7 @@ exports.protect = async (req, res, next) => {
       if (seller) {
         user = seller;
         isSeller = true;
-        console.log('Seller found in Seller collection:', seller.storeName);
+        // console.log('Seller found in Seller collection:', seller.storeName);
       }
     }
     
@@ -52,7 +52,7 @@ exports.protect = async (req, res, next) => {
     
     // Check if user is active
     if (user.isActive === false) {
-      console.log('Account deactivated:', user.email || user.businessEmail);
+      // console.log('Account deactivated:', user.email || user.businessEmail);
       return res.status(401).json({
         success: false,
         message: 'Your account has been deactivated. Please contact support.',
@@ -63,7 +63,7 @@ exports.protect = async (req, res, next) => {
     const userEmail = user.email || user.businessEmail;
     const userRole = isSeller ? 'seller' : user.role;
     
-    console.log(`User authenticated: ${userEmail} with role: ${userRole}`);
+    // console.log(`User authenticated: ${userEmail} with role: ${userRole}`);
     
     // Attach user to request with role information
     req.user = {
@@ -103,7 +103,7 @@ exports.protect = async (req, res, next) => {
 // Role-based authorization middleware
 exports.authorize = (...roles) => {
   return (req, res, next) => {
-    console.log(`Checking authorization. User role: ${req.user?.role}, Required roles: ${roles}`);
+    // console.log(`Checking authorization. User role: ${req.user?.role}, Required roles: ${roles}`);
     
     if (!req.user) {
       return res.status(401).json({
@@ -113,14 +113,14 @@ exports.authorize = (...roles) => {
     }
     
     if (!roles.includes(req.user.role)) {
-      console.log(`Authorization failed. User role ${req.user.role} not in ${roles}`);
+      // console.log(`Authorization failed. User role ${req.user.role} not in ${roles}`);
       return res.status(403).json({
         success: false,
         message: `Access denied. ${req.user.role}s are not authorized to access this route.`,
       });
     }
     
-    console.log(`Authorization successful for role: ${req.user.role}`);
+    // console.log(`Authorization successful for role: ${req.user.role}`);
     next();
   };
 };

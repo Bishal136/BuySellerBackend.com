@@ -70,7 +70,7 @@ exports.requestOTP = async (req, res) => {
         });
       }
       
-      console.log(`[Auth] User found in ${found.source} collection with role: ${found.role}`);
+      // console.log(`[Auth] User found in ${found.source} collection with role: ${found.role}`);
     }
 
     // Check if user already exists for registration
@@ -110,7 +110,7 @@ exports.verifyOTPAndLogin = async (req, res) => {
   try {
     let { email, otp, purpose, name, phone } = req.body;
 
-    console.log('Verify OTP request:', { email, otp, purpose, name, phone });
+    // console.log('Verify OTP request:', { email, otp, purpose, name, phone });
     
     // Clean inputs
     if (email) email = email.trim().toLowerCase();
@@ -162,7 +162,7 @@ exports.verifyOTPAndLogin = async (req, res) => {
       userSource = 'user';
       userRole = 'customer';
       
-      console.log(`[Auth] New customer registered: ${email}`);
+      // console.log(`[Auth] New customer registered: ${email}`);
       
     } else if (purpose === 'login') {
       // LOGIN - Find existing user
@@ -194,7 +194,7 @@ exports.verifyOTPAndLogin = async (req, res) => {
       }
       await user.save();
       
-      console.log(`[Auth] ${userSource === 'seller' ? 'Seller' : 'Customer'} logged in: ${email}`);
+      // console.log(`[Auth] ${userSource === 'seller' ? 'Seller' : 'Customer'} logged in: ${email}`);
       
     } else {
       return res.status(400).json({
@@ -236,7 +236,7 @@ exports.verifyOTPAndLogin = async (req, res) => {
       };
     }
 
-    console.log(`[Auth] User response:`, userResponse);
+    // console.log(`[Auth] User response:`, userResponse);
 
     res.status(200).json({
       success: true,
@@ -261,7 +261,7 @@ exports.resendOTP = async (req, res) => {
   try {
     const { email, purpose } = req.body;
 
-    console.log(`[Auth] Resend OTP for ${email}`);
+    // console.log(`[Auth] Resend OTP for ${email}`);
 
     if (!email || !purpose) {
       return res.status(400).json({

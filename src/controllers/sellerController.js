@@ -89,7 +89,7 @@ exports.registerSeller = async (req, res) => {
       updatedAt: new Date()
     });
 
-    console.log('Seller created successfully:', seller._id);
+    // console.log('Seller created successfully:', seller._id);
 
     res.status(201).json({
       success: true,

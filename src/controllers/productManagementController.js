@@ -390,7 +390,7 @@ exports.updateProductStatus = async (req, res) => {
 // @access  Private/Seller
 exports.uploadProductImage = async (req, res) => {
   try {
-    console.log('Upload request received:', req.file ? 'File present' : 'No file');
+    // console.log('Upload request received:', req.file ? 'File present' : 'No file');
     
     if (!req.file) {
       return res.status(400).json({

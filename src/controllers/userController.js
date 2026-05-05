@@ -499,9 +499,9 @@ exports.uploadAvatar = async (req, res) => {
       try {
         const publicId = user.profileImage.split('/').pop().split('.')[0];
         await cloudinary.uploader.destroy(`avatars/${publicId}`);
-        console.log('Old avatar deleted');
+        // console.log('Old avatar deleted');
       } catch (error) {
-        console.error('Error deleting old avatar:', error);
+        // console.error('Error deleting old avatar:', error);
       }
     }
 
@@ -524,7 +524,7 @@ exports.uploadAvatar = async (req, res) => {
       uploadStream.end(req.file.buffer);
     });
 
-    console.log('Uploaded to Cloudinary:', result.secure_url);
+    // console.log('Uploaded to Cloudinary:', result.secure_url);
 
     user.profileImage = result.secure_url;
     await user.save();
@@ -554,7 +554,7 @@ exports.uploadAvatar = async (req, res) => {
 // @access  Private
 exports.deleteAvatar = async (req, res) => {
   try {
-    console.log('Delete avatar request received');
+    // console.log('Delete avatar request received');
 
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -569,7 +569,7 @@ exports.deleteAvatar = async (req, res) => {
       try {
         const publicId = user.profileImage.split('/').pop().split('.')[0];
         await cloudinary.uploader.destroy(`avatars/${publicId}`);
-        console.log('Avatar deleted from Cloudinary');
+        // console.log('Avatar deleted from Cloudinary');
       } catch (error) {
         console.error('Error deleting from Cloudinary:', error);
       }
