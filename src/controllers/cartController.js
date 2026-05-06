@@ -1,5 +1,6 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
+const Coupon = require('../models/Coupon');
 
 // @desc    Get user cart
 // @route   GET /api/cart
@@ -231,21 +232,38 @@ exports.applyCoupon = async (req, res) => {
       });
     }
     
-    // Coupon validation (in real app, fetch from database)
-    const validCoupons = {
-      'SAVE10': { type: 'percentage', value: 10, minPurchase: 50, maxDiscount: 50 },
-      'SAVE20': { type: 'percentage', value: 20, minPurchase: 100, maxDiscount: 100 },
-      'FLAT50': { type: 'fixed', value: 50, minPurchase: 200 },
-      'WELCOME': { type: 'percentage', value: 15, minPurchase: 0, maxDiscount: 30 },
-      'FREESHIP': { type: 'percentage', value: 0, minPurchase: 0, freeShipping: true }
-    };
+    // Find coupon in database
+    const coupon = await Coupon.findOne({ code: code.trim().toUpperCase() });
     
-    const couponData = validCoupons[code.toUpperCase()];
-    
-    if (!couponData) {
+    if (!coupon) {
       return res.status(400).json({
         success: false,
         message: 'Invalid coupon code'
+      });
+    }
+    
+    // Check if coupon is active
+    if (!coupon.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon is no longer active'
+      });
+    }
+    
+    // Check dates
+    const now = new Date();
+    if (now < coupon.startDate || now > coupon.endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon is expired or not yet valid'
+      });
+    }
+    
+    // Check usage limits
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon has reached its usage limit'
       });
     }
     
@@ -258,26 +276,23 @@ exports.applyCoupon = async (req, res) => {
     }
     
     // Check minimum purchase
-    if (cart.subtotal < couponData.minPurchase) {
+    if (cart.subtotal < coupon.minPurchase) {
       return res.status(400).json({
         success: false,
-        message: `Minimum purchase of $${couponData.minPurchase} required for this coupon`
+        message: `Minimum purchase of ${coupon.minPurchase} required for this coupon`
       });
     }
     
     // Apply coupon
     cart.coupon = {
-      code: code.toUpperCase(),
-      discountType: couponData.type,
-      discountValue: couponData.value,
-      maxDiscount: couponData.maxDiscount,
-      minPurchase: couponData.minPurchase
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      maxDiscount: coupon.maxDiscount,
+      minPurchase: coupon.minPurchase
     };
     
-    // Handle free shipping
-    if (couponData.freeShipping) {
-      cart.shippingCost = 0;
-    }
+    // No freeShipping flag in Coupon model directly, so remove that hardcoded part
     
     await cart.save();
     
@@ -410,6 +425,62 @@ exports.syncCart = async (req, res) => {
     });
   } catch (error) {
     console.error('Sync cart error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Validate coupon (public endpoint for guest carts)
+// @route   GET /api/cart/coupon/validate/:code
+// @access  Public
+exports.validateCoupon = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const coupon = await Coupon.findOne({ code: code.trim().toUpperCase() });
+    
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid coupon code'
+      });
+    }
+    
+    if (!coupon.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon is no longer active'
+      });
+    }
+    
+    const now = new Date();
+    if (now < coupon.startDate || now > coupon.endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon is expired or not yet valid'
+      });
+    }
+    
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+      return res.status(400).json({
+        success: false,
+        message: 'This coupon has reached its usage limit'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      coupon: {
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        maxDiscount: coupon.maxDiscount,
+        minPurchase: coupon.minPurchase
+      }
+    });
+  } catch (error) {
+    console.error('Validate coupon error:', error);
     res.status(500).json({
       success: false,
       message: error.message

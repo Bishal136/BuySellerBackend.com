@@ -9,8 +9,12 @@ const {
   applyCoupon,
   removeCoupon,
   clearCart,
-  syncCart
+  syncCart,
+  validateCoupon
 } = require('../controllers/cartController');
+
+// Public route to validate coupon (for guest carts)
+router.get('/coupon/validate/:code', validateCoupon);
 
 // All cart routes are protected
 router.use(protect);
