@@ -1,46 +1,28 @@
-const nodemailer = require('nodemailer');
+const emailjs = require('@emailjs/nodejs');
 
 const sendEmail = async (options) => {
   try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.EMAIL_PORT) || 465,
-      secure: process.env.EMAIL_SECURE === 'true',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-      },
-      tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2'
-      },
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000,
-      socketTimeout: 10000
-    });
-
-    // No verify - just try to send
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || `"SellBuy" <${process.env.EMAIL_USER}>`,
-      to: options.email,
+    const templateParams = {
+      to_email: options.email,
       subject: options.subject,
-      html: options.message,
+      otp: options.otp, // Add OTP parameter
+      message: options.message, // Keep for flexibility
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent: ', info.messageId);
-    return info;
+    const response = await emailjs.send(
+      process.env.EMAILJS_SERVICE_ID,
+      process.env.EMAILJS_TEMPLATE_ID,
+      templateParams,
+      {
+        publicKey: process.env.EMAILJS_PUBLIC_KEY,
+        privateKey: process.env.EMAILJS_PRIVATE_KEY,
+      }
+    );
+
+    console.log('Email sent successfully:', response);
+    return response;
   } catch (error) {
     console.error('Email sending error:', error);
-    
-    // Fallback: If Gmail fails, log OTP to console for testing
-    console.log('========================================');
-    console.log('EMAIL FAILED - OTP/Message for testing:');
-    console.log('To:', options.email);
-    console.log('Subject:', options.subject);
-    console.log('Message:', options.message);
-    console.log('========================================');
-    
     throw new Error(`Email could not be sent: ${error.message}`);
   }
 };
