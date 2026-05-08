@@ -3,27 +3,14 @@ const emailjs = require('@emailjs/nodejs');
 const sendEmail = async (options) => {
   try {
     console.log('📧 Sending email to:', options.email);
-    console.log('OTP value:', options.otp);
-    console.log('All options:', options);
-    
-    // FORCE the OTP into subject line (guaranteed to show)
-    const emailSubject = options.subject || 'Your OTP Code';
-    const subjectWithOTP = options.otp 
-      ? `${emailSubject} - OTP: ${options.otp}` 
-      : emailSubject;
     
     const templateParams = {
       to_email: options.email,
-      subject: subjectWithOTP,  // OTP will show in subject
-      otp: options.otp || 'NO OTP PROVIDED',
-      code: options.otp,
-      otp_code: options.otp,
-      message: options.otp 
-        ? `<h1 style="font-size:40px;color:#667eea;">${options.otp}</h1>` 
-        : '<p>OTP missing</p>',
+      subject: options.subject || 'Your OTP Code',
+      message: options.message || '',  // Pass the full HTML message
     };
 
-    console.log('Sending params:', templateParams);
+    console.log('Sending email with subject:', templateParams.subject);
 
     const response = await emailjs.send(
       process.env.EMAILJS_SERVICE_ID,
