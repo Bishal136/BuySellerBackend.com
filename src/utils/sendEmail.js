@@ -2,12 +2,20 @@ const emailjs = require('@emailjs/nodejs');
 
 const sendEmail = async (options) => {
   try {
+    console.log('📧 Sending email to:', options.email);
+    console.log('OTP value:', options.otp);
+    
+    // IMPORTANT: Check what your template expects
     const templateParams = {
       to_email: options.email,
       subject: options.subject,
-      otp: options.otp, // Add OTP parameter
-      message: options.message, // Keep for flexibility
+      otp: options.otp,           // The OTP value
+      // Also try these if otp doesn't work:
+      code: options.otp,          // Backup name
+      otp_code: options.otp,      // Another backup
     };
+
+    console.log('Sending params:', templateParams);
 
     const response = await emailjs.send(
       process.env.EMAILJS_SERVICE_ID,
@@ -19,11 +27,11 @@ const sendEmail = async (options) => {
       }
     );
 
-    console.log('Email sent successfully:', response);
+    console.log('✅ Email sent!', response.status);
     return response;
   } catch (error) {
-    console.error('Email sending error:', error);
-    throw new Error(`Email could not be sent: ${error.message}`);
+    console.error('❌ Error:', error);
+    throw error;
   }
 };
 
