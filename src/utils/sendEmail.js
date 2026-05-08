@@ -4,15 +4,23 @@ const sendEmail = async (options) => {
   try {
     console.log('📧 Sending email to:', options.email);
     console.log('OTP value:', options.otp);
+    console.log('All options:', options);
     
-    // IMPORTANT: Check what your template expects
+    // FORCE the OTP into subject line (guaranteed to show)
+    const emailSubject = options.subject || 'Your OTP Code';
+    const subjectWithOTP = options.otp 
+      ? `${emailSubject} - OTP: ${options.otp}` 
+      : emailSubject;
+    
     const templateParams = {
       to_email: options.email,
-      subject: options.subject,
-      otp: options.otp,           // The OTP value
-      // Also try these if otp doesn't work:
-      code: options.otp,          // Backup name
-      otp_code: options.otp,      // Another backup
+      subject: subjectWithOTP,  // OTP will show in subject
+      otp: options.otp || 'NO OTP PROVIDED',
+      code: options.otp,
+      otp_code: options.otp,
+      message: options.otp 
+        ? `<h1 style="font-size:40px;color:#667eea;">${options.otp}</h1>` 
+        : '<p>OTP missing</p>',
     };
 
     console.log('Sending params:', templateParams);
@@ -27,7 +35,7 @@ const sendEmail = async (options) => {
       }
     );
 
-    console.log('✅ Email sent!', response.status);
+    console.log('✅ Email sent! Status:', response.status);
     return response;
   } catch (error) {
     console.error('❌ Error:', error);
