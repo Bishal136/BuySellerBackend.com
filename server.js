@@ -144,4 +144,10 @@ process.on('SIGTERM', () => {
   });
 });
 
+// Run cleanup every hour
+setInterval(() => {
+  const { cleanupExpiredOTPs } = require('./utils/otpService');
+  cleanupExpiredOTPs();
+}, 60 * 60 * 1000);
+
 module.exports = app;

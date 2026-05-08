@@ -2,15 +2,20 @@ const emailjs = require('@emailjs/nodejs');
 
 const sendEmail = async (options) => {
   try {
-    console.log('📧 Sending email to:', options.email);
+    const { email, subject, message } = options;
     
-    const templateParams = {
-      to_email: options.email,
-      subject: options.subject || 'Your OTP Code',
-      message: options.message || '',  // Pass the full HTML message
-    };
+    // Validation
+    if (!email) throw new Error('Recipient email is required');
+    if (!message) throw new Error('Email message is required');
 
-    console.log('Sending email with subject:', templateParams.subject);
+    console.log(`📧 Sending email to: ${email}`);
+
+    const templateParams = {
+      to_email: email,
+      subject: subject || 'ShopHub Notification',
+      message: message,
+      year: new Date().getFullYear(),
+    };
 
     const response = await emailjs.send(
       process.env.EMAILJS_SERVICE_ID,
@@ -22,11 +27,15 @@ const sendEmail = async (options) => {
       }
     );
 
-    console.log('✅ Email sent! Status:', response.status);
-    return response;
+    if (response.status === 200) {
+      console.log(`✅ Email sent successfully to ${email}`);
+      return { success: true, messageId: response.id };
+    } else {
+      throw new Error(`Unexpected response status: ${response.status}`);
+    }
   } catch (error) {
-    console.error('❌ Error:', error);
-    throw error;
+    console.error('❌ Email Error:', error.message);
+    throw new Error(`Failed to send email: ${error.message}`);
   }
 };
 
