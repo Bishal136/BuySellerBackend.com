@@ -6,4 +6,4 @@ build/
 logs/
 *.log
 coverage/
-.nyc_output/
+.nyc_output/.env
