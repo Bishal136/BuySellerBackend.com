@@ -49,7 +49,7 @@ app.use(cors({
     const allowedOrigins = [
       process.env.FRONTEND_URL,
       'https://buyselling.netlify.app',
-      "https://nirab-frontend.vercel.app"
+      "https://buy-seller-frontend.vercel.app"
     
     ];
     if (!origin) return callback(null, true);
