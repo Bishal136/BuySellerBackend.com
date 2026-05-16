@@ -1,6 +1,7 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Review = require('../models/Review');
+const Order = require('../models/Order');
 
 exports.getProducts = async (req, res) => {
   try {
@@ -463,8 +464,21 @@ exports.getProductReviews = async (req, res) => {
       distribution[review.rating]++;
     });
     
+    // Check if user can review (if authenticated)
+    let canReview = false;
+    if (req.user) {
+      const order = await Order.findOne({
+        user: req.user.id,
+        'orderItems.product': id,
+        status: 'delivered'
+      });
+      const existingReview = await Review.findOne({ product: id, user: req.user.id });
+      canReview = !!order && !existingReview;
+    }
+    
     res.status(200).json({
       success: true,
+      canReview,
       reviews,
       pagination: {
         page,
@@ -525,6 +539,20 @@ exports.addReview = async (req, res) => {
       });
     }
     
+    // Check if user purchased the product and it is delivered
+    const hasPurchased = await Order.findOne({
+      user: req.user.id,
+      'orderItems.product': id,
+      status: 'delivered'
+    });
+    
+    if (!hasPurchased) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must purchase this product before reviewing'
+      });
+    }
+    
     // Create review
     const review = await Review.create({
       product: id,
@@ -532,9 +560,16 @@ exports.addReview = async (req, res) => {
       rating: parseInt(rating),
       title: title || '',
       comment: comment,
-      verifiedPurchase: false,
+      images: req.body.images || [],
+      verifiedPurchase: true,
       status: 'approved'
     });
+
+    // Mark as reviewed in Order Item
+    await Order.updateOne(
+      { _id: hasPurchased._id, 'orderItems.product': id },
+      { $set: { 'orderItems.$.hasReviewed': true } }
+    );
     
     // Update product rating
     const allReviews = await Review.find({ product: id, status: 'approved' });
@@ -677,6 +712,66 @@ exports.deleteReview = async (req, res) => {
 
 
 
+// @desc    Mark review as helpful
+// @route   POST /api/products/reviews/:reviewId/helpful
+// @access  Private
+exports.markHelpful = async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.reviewId);
+    
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Review not found' });
+    }
+
+    if (review.user.toString() === req.user.id) {
+      return res.status(400).json({ success: false, message: 'Cannot vote on own review' });
+    }
+
+    const hasVoted = review.helpful.includes(req.user.id);
+    
+    if (hasVoted) {
+      review.helpful = review.helpful.filter(id => id.toString() !== req.user.id);
+    } else {
+      review.helpful.push(req.user.id);
+    }
+    
+    await review.save();
+    
+    res.status(200).json({ success: true, helpfulCount: review.helpful.length, hasVoted: !hasVoted });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Seller reply to review
+// @route   POST /api/products/reviews/:reviewId/reply
+// @access  Private
+exports.replyToReview = async (req, res) => {
+  try {
+    const { comment } = req.body;
+    const review = await Review.findById(req.params.reviewId).populate('product', 'seller');
+    
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Review not found' });
+    }
+
+    if (review.product.seller.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized to reply' });
+    }
+
+    review.sellerReply = {
+      comment,
+      createdAt: new Date()
+    };
+    
+    await review.save();
+    
+    res.status(200).json({ success: true, review });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Helper function for rating distribution
 function getRatingDistribution(reviews) {
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -685,3 +780,56 @@ function getRatingDistribution(reviews) {
   });
   return distribution;
 }
+
+// @desc    Get logged in user's reviews
+// @route   GET /api/products/my-reviews
+// @access  Private
+exports.getUserReviews = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const startIndex = (page - 1) * limit;
+
+    const reviews = await require('../models/Review').find({ user: req.user.id })
+      .populate('product', 'name images slug brand')
+      .sort('-createdAt')
+      .limit(limit)
+      .skip(startIndex);
+
+    const total = await require('../models/Review').countDocuments({ user: req.user.id });
+
+    // Also get "To Review" items
+    const orders = await require('../models/Order').find({ 
+      user: req.user.id, 
+      status: 'delivered' 
+    }).populate('orderItems.product', 'name images slug brand');
+
+    let toReviewMap = new Map();
+    orders.forEach(order => {
+      order.orderItems.forEach(item => {
+        // If hasn't reviewed, and product exists, and not already in map
+        if (!item.hasReviewed && item.product && !toReviewMap.has(item.product._id.toString())) {
+          toReviewMap.set(item.product._id.toString(), {
+            orderId: order._id,
+            deliveredAt: order.deliveredAt || order.updatedAt,
+            product: item.product
+          });
+        }
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      reviews,
+      toReview: Array.from(toReviewMap.values()),
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

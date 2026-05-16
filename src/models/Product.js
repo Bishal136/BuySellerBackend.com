@@ -119,7 +119,11 @@ const productSchema = new mongoose.Schema({
     count: { type: Number, default: 0 }
   },
   returnPolicy: String,
-  warranty: String
+  warranty: String,
+  youtubeVideoId: {
+    type: String,
+    trim: true
+  }
 }, {
   timestamps: true
 });

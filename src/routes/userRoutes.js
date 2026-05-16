@@ -18,7 +18,8 @@ const {
   addRecentlyViewed,
   clearRecentlyViewed,
   uploadAvatar,
-  deleteAvatar
+  deleteAvatar,
+  uploadImage
 } = require('../controllers/userController');
 
 // Configure multer for memory storage
@@ -53,6 +54,9 @@ router.put('/change-password', changePassword);
 // Avatar routes
 router.post('/upload-avatar', upload.single('avatar'), uploadAvatar);
 router.delete('/delete-avatar', deleteAvatar);
+
+// Generic image upload
+router.post('/upload', upload.single('image'), uploadImage);
 
 // Address routes
 router.get('/addresses', getAddresses);

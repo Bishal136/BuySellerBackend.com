@@ -14,9 +14,9 @@ const orderItemSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-   seller: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+  hasReviewed: {
+    type: Boolean,
+    default: false
   }
 });
 

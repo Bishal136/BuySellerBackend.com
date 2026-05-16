@@ -29,14 +29,19 @@ const reviewSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  helpful: {
-    type: Number,
-    default: 0
+  images: [String],
+  helpful: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  sellerReply: {
+    comment: String,
+    createdAt: Date
   },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'pending'
+    default: 'approved' // Setting to approved by default for MVP
   }
 }, {
   timestamps: true

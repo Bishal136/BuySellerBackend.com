@@ -9,8 +9,8 @@ const {
   requestReturn,
   trackOrder,
   downloadInvoice,
-  getOrderStats
- 
+  getOrderStats,
+  checkReviewEligibility
 } = require('../controllers/orderController');
 
 router.use(protect);
@@ -19,8 +19,7 @@ router.use(protect);
 router.post('/create', createOrder);
 router.get('/', getUserOrders);
 router.get('/stats/summary', getOrderStats); 
-
-
+router.get('/can-review/:productId', checkReviewEligibility);
 
 // Dynamic routes LAST
 router.get('/:id', getOrderById);

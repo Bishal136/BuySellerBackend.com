@@ -554,3 +554,38 @@ exports.createOrder = async (req, res) => {
   }
 };
 
+// @desc    Check if user can review a product
+// @route   GET /api/orders/can-review/:productId
+// @access  Private
+exports.checkReviewEligibility = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    
+    const order = await Order.findOne({
+      user: req.user.id,
+      'orderItems.product': productId,
+      status: 'delivered'
+    });
+    
+    if (!order) {
+      return res.status(200).json({ success: true, canReview: false });
+    }
+    
+    // Check if review already exists
+    const existingReview = await require('../models/Review').findOne({
+      user: req.user.id,
+      product: productId
+    });
+    
+    res.status(200).json({
+      success: true,
+      canReview: !existingReview
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+

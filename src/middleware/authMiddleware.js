@@ -100,6 +100,16 @@ exports.protect = async (req, res, next) => {
   }
 };
 
+exports.optionalAuth = async (req, res, next) => {
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    return exports.protect(req, res, (err) => {
+      // Ignore auth errors, just proceed without req.user
+      next();
+    });
+  }
+  next();
+};
+
 // Role-based authorization middleware
 exports.authorize = (...roles) => {
   return (req, res, next) => {
