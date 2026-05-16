@@ -24,6 +24,7 @@ const adminRoutes = require('./src/routes/adminRoutes');
 // const reviewRoutes = require('./src/routes/reviewRoutes');
 const categoryRoutes = require('./src/routes/categoryRoutes');
 const bannerRoutes = require('./src/routes/bannerRoutes');
+const searchRoutes = require('./src/routes/searchRoutes');
 
 // Connect to database
 connectDB();
@@ -82,6 +83,7 @@ app.use('/api/seller', sellerRoutes);
 
 app.use('/api/categories', categoryRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/search', searchRoutes);
 
 
 // Health check endpoint

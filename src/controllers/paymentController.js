@@ -19,68 +19,7 @@ const nagadConfig = {
   merchantKey: process.env.NAGAD_MERCHANT_KEY
 };
 
-// @desc    Create order
-// @route   POST /api/orders/create
-// @access  Private
-exports.createOrder = async (req, res) => {
-  try {
-    const {
-      shippingAddress,
-      paymentMethod,
-      orderItems,
-      itemsPrice,
-      taxPrice,
-      shippingPrice,
-      discountPrice,
-      totalPrice,
-      coupon,
-      notes
-    } = req.body;
 
-    // Validate order items
-    if (!orderItems || orderItems.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No order items'
-      });
-    }
-
-    // Create order
-    const order = await Order.create({
-      user: req.user.id,
-      orderItems,
-      shippingAddress,
-      paymentMethod,
-      itemsPrice,
-      taxPrice,
-      shippingPrice,
-      discountPrice,
-      totalPrice,
-      coupon,
-      notes,
-      status: 'pending',
-      isPaid: false
-    });
-
-    // Clear user's cart after order creation
-    await Cart.findOneAndUpdate(
-      { user: req.user.id },
-      { items: [], coupon: null },
-      { new: true }
-    );
-
-    res.status(201).json({
-      success: true,
-      order
-    });
-  } catch (error) {
-    console.error('Create order error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
 
 // @desc    Initialize bKash payment
 // @route   POST /api/payment/bkash/init
@@ -313,64 +252,7 @@ exports.confirmCashOnDelivery = async (req, res) => {
   }
 };
 
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private
-exports.getOrderById = async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id)
-      .populate('user', 'name email')
-      .populate('orderItems.product', 'name images');
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
-    // Check if user owns order or is admin
-    if (order.user._id.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      order
-    });
-  } catch (error) {
-    console.error('Get order error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-// @desc    Get user orders
-// @route   GET /api/orders
-// @access  Private
-exports.getUserOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({ user: req.user.id })
-      .sort('-createdAt')
-      .populate('orderItems.product', 'name images');
-
-    res.status(200).json({
-      success: true,
-      orders
-    });
-  } catch (error) {
-    console.error('Get orders error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
 
 // Helper function to send order confirmation email
 async function sendOrderConfirmationEmail(email, order) {

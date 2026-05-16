@@ -1,0 +1,30 @@
+Unused files (3)
+scripts/create-admin.js                
+src/controllers/sellerFullController.js
+src/services/smsService.js             
+Unused dependencies (8)
+bcryptjs               package.json:13:6
+express-async-handler  package.json:23:6
+express-validator      package.json:25:6
+nodemailer             package.json:31:6
+qrcode                 package.json:33:6
+speakeasy              package.json:35:6
+stripe                 package.json:36:6
+twilio                 package.json:37:6
+Unresolved imports (1)
+./utils/otpService  server.js:151:11
+Unused exports (14)
+createOrderNotification        src/controllers/notificationController.js:368:9
+checkPriceDrops                src/controllers/notificationController.js:419:9
+checkBackInStock               src/controllers/notificationController.js:468:9
+createPromotionalNotification  src/controllers/notificationController.js:510:9
+sendBulkPromotion              src/controllers/notificationController.js:532:9
+createOrder                    src/controllers/paymentController.js:25:9      
+getOrderById                   src/controllers/paymentController.js:319:9     
+getUserOrders                  src/controllers/paymentController.js:356:9     
+bulkUpdateStock                src/controllers/sellerController.js:776:9      
+createAndSendOTP               src/utils/otpService.js:227:3                  
+verifyOTP                      src/utils/otpService.js:228:3                  
+resendOTP                      src/utils/otpService.js:229:3                  
+generateOTP                    src/utils/otpService.js:230:3                  
+cleanupExpiredOTPs             src/utils/otpService.js:231:3                  
