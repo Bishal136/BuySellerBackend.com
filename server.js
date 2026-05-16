@@ -49,7 +49,8 @@ app.use(cors({
     const allowedOrigins = [
       process.env.FRONTEND_URL,
       'https://buyselling.netlify.app',
-      "https://buy-seller-frontend.vercel.app"
+      "https://buy-seller-frontend.vercel.app",
+      "http://localhost:3000"
     
     ];
     if (!origin) return callback(null, true);
